@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+print("[INFO] Importing modules...")
+
 import matplotlib.pyplot as plt
 import json
 import base64

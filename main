@@ -9,7 +9,7 @@ echo "[INFO] Pulling Python v3.8 container..."
 singularity pull docker://python:3.8-bookworm
 
 echo "[INFO] Installing qsm-forward"
-singularity exec python_3.8-bookworm.sif pip install --user nibabel matplotlib
+singularity exec python_3.8-bookworm.sif pip install --user nibabel matplotlib lazy_loader
 
 echo "[INFO] Starting main.py..."
 singularity exec python_3.8-bookworm.sif python3 main.py
