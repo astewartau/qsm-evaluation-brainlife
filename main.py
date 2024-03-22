@@ -1,10 +1,11 @@
 #!/usr/bin/env python
+
 import matplotlib.pyplot as plt
 import json
 import base64
 import nibabel as nib
 from metrics import all_metrics
-	
+
 def plot_error_metrics(metrics, title="Error Metrics"):
     # Create a bar plot for the metrics
     #sns.set_theme(style='whitegrid')
@@ -70,7 +71,6 @@ metrics_dict['NRMSE'] /= 100.0
 metrics_dict['CC'] = (metrics_dict['CC'][0] + 1) / 2
 metrics_dict['NMI'] -= 1 
 #metrics_dict['GXE']
-
 
 print("[INFO] Generating figure...")
 plot_error_metrics(metrics_dict)
