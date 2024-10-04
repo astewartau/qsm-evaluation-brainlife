@@ -238,10 +238,10 @@ def all_metrics(pred_data, ref_data, roi=None):
     d['NRMSE'] = calculate_nrmse(pred_data[roi], ref_data[roi])
     d['HFEN'] = calculate_hfen(pred_data, ref_data)  # does not flatten
     d['MAD'] = calculate_mad(pred_data[roi], ref_data[roi])
+    d['GXE'] = calculate_gxe(pred_data, ref_data)  # does not flatten
     d['XSIM'] = calculate_xsim(pred_data, ref_data)  # does not flatten
     d['CC'] = pearson_corr_coeff(pred_data[roi], ref_data[roi])
     d['NMI'] = normalized_mutual_information(pred_data[roi], ref_data[roi])
-    d['GXE'] = calculate_gxe(pred_data, ref_data)  # does not flatten
 
     return d
 

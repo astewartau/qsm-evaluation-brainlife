@@ -2,30 +2,43 @@
 
 import os
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import json
 import base64
 import nibabel as nib
+import numpy as np
 from metrics import all_metrics
-import shutil
 
 def plot_error_metrics(all_metrics_dicts, output_dir, title="Error Metrics"):
-    plt.figure(figsize=(10, 6))
-    plt.ylim(0, 1.0)
+    metrics_keys = list(all_metrics_dicts[0][0].keys())  # The metric names (x-axis categories)
+    num_metrics = len(metrics_keys)
+    num_estimates = len(all_metrics_dicts)
 
-    # Loop through each set of metrics and plot
-    for metrics, label in all_metrics_dicts:
-        plt.stem(metrics.keys(), metrics.values(), label=label)
+    # Create a color map for different estimates
+    cmap = cm.get_cmap('tab10')
 
-        # Annotate each point with its value
-        for key, value in metrics.items():
-            plt.text(key, value + 0.01, f"{value:.3f}", 
-                    ha='left', va='bottom', 
-                    fontsize=8, rotation=0)
+    # Get an array of indices for the x-axis based on the number of metrics
+    x = np.arange(num_metrics)
+    
+    # Define the width of each bar
+    bar_width = 0.2
 
-    plt.title('QSM Evaluation Metrics')
+    plt.figure(figsize=(12, 6))
+
+    # Loop through each set of metrics and plot with unique colors
+    for idx, (metrics, label) in enumerate(all_metrics_dicts):
+        metric_values = [metrics[metric] for metric in metrics_keys]  # Extract the values for this estimate
+        plt.bar(x + idx * bar_width, metric_values, bar_width, label=label, color=cmap(idx / num_estimates))
+
+        # Annotate each bar with its value
+        for i, value in enumerate(metric_values):
+            plt.text(x[i] + idx * bar_width, value + 0.01, f"{value:.3f}", ha='center', va='bottom', fontsize=8)
+
+    # Set the labels and title
     plt.xlabel('Metric')
     plt.ylabel('Value')
-    plt.xticks(rotation=45)
+    plt.title('QSM Evaluation Metrics')
+    plt.xticks(x + bar_width * (num_estimates - 1) / 2, metrics_keys, rotation=45)
     plt.legend()
     plt.tight_layout()
 
@@ -33,7 +46,7 @@ def plot_error_metrics(all_metrics_dicts, output_dir, title="Error Metrics"):
     plot_path = os.path.join(output_dir, "metrics_plot.png")
     plt.savefig(plot_path)
     plt.close()
-    
+
     return plot_path
 
 def encode_image_to_base64(image_path):
