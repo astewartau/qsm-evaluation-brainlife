@@ -1,46 +1,47 @@
 #!/usr/bin/env python
 
-print("[INFO] Importing modules...")
-
+import os
 import matplotlib.pyplot as plt
 import json
 import base64
 import nibabel as nib
 from metrics import all_metrics
+import shutil
 
-def plot_error_metrics(metrics, title="Error Metrics"):
-    # Create a bar plot for the metrics
-    #sns.set_theme(style='whitegrid')
+def plot_error_metrics(all_metrics_dicts, output_dir, title="Error Metrics"):
     plt.figure(figsize=(10, 6))
-    
-    # stem function
     plt.ylim(0, 1.0)
-    
-    # stem function: If x is not provided, a sequence of numbers is created by python:
-    plt.stem(metrics.keys(), metrics.values())
 
-    plt.title('QSM evaluation metrics')
+    # Loop through each set of metrics and plot
+    for metrics, label in all_metrics_dicts:
+        plt.stem(metrics.keys(), metrics.values(), label=label)
+
+        # Annotate each point with its value
+        for key, value in metrics.items():
+            plt.text(key, value + 0.01, f"{value:.3f}", 
+                    ha='left', va='bottom', 
+                    fontsize=8, rotation=0)
+
+    plt.title('QSM Evaluation Metrics')
     plt.xlabel('Metric')
     plt.ylabel('Value')
     plt.xticks(rotation=45)
+    plt.legend()
     plt.tight_layout()
 
-    # Annotate each point with its value
-    for key, value in metrics.items():
-        plt.text(key, value + 0.01, f"{value:.3f}", 
-                ha='left', va='bottom', 
-                fontsize=8, rotation=0)
-    
-    # Save the plot as a PNG file
-    plt.savefig("metrics_plot.png")
+    # Save the plot as a PNG file in the output directory
+    plot_path = os.path.join(output_dir, "metrics_plot.png")
+    plt.savefig(plot_path)
     plt.close()
+    
+    return plot_path
 
 def encode_image_to_base64(image_path):
     with open(image_path, "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
     return encoded_string
 
-def create_json_for_brainlife(encoded_image, image_title="My image title"):
+def create_json_for_brainlife(encoded_image, image_title="QSM Error Metrics"):
     data = {
         "brainlife": [
             {
@@ -52,36 +53,109 @@ def create_json_for_brainlife(encoded_image, image_title="My image title"):
     }
     return json.dumps(data, indent=4)
 
-# load inputs from config.json
+def generate_html_table(all_metrics_dicts):
+    # Extract unique metric names from the first estimate's metrics
+    metrics_keys = list(all_metrics_dicts[0][0].keys())
+
+    # Start creating the table HTML
+    html = "<table border='1' cellpadding='5'>"
+    html += "<thead><tr><th>Estimate</th>"
+
+    # Add columns for each metric name
+    for metric in metrics_keys:
+        html += f"<th>{metric}</th>"
+    html += "</tr></thead>"
+
+    # Add rows for each QSM estimate
+    html += "<tbody>"
+    for metrics, label in all_metrics_dicts:
+        html += f"<tr><td>{label}</td>"
+        for metric in metrics_keys:
+            html += f"<td>{metrics[metric]:.3f}</td>"
+        html += "</tr>"
+    html += "</tbody></table>"
+
+    return html
+
+def generate_index_html(output_dir, plot_path, metrics_table_html):
+    # Create the index.html content
+    html_content = f"""
+    <html>
+    <head><title>QSM Evaluation Results</title></head>
+    <body>
+    <h1>QSM Evaluation Metrics</h1>
+    <h2>Metrics Table</h2>
+    {metrics_table_html}
+    <h2>Metrics Plot</h2>
+    <img src="html/metrics_plot.png" alt="QSM Evaluation Metrics">
+    </body>
+    </html>
+    """
+
+    # Write the HTML to index.html in the output directory
+    index_html_path = os.path.join(output_dir, "index.html")
+    with open(index_html_path, "w") as html_file:
+        html_file.write(html_content)
+    
+    print(f"[INFO] index.html generated at {index_html_path}")
+
+# Load inputs from config.json
 print("[INFO] Loading configuration...")
 with open('config.json') as config_json_file_handle:
-	config_json = json.load(config_json_file_handle)
+    config_json = json.load(config_json_file_handle)
 
-print("[INFO] Loading QSM results for metrics...")
-qsm_file = config_json['qsm_estimate']
+# Prepare output directory
+output_dir = "html"
+os.makedirs(output_dir, exist_ok=True)
+os.makedirs(os.path.join(output_dir, 'html'), exist_ok=True)
+
+# Load ground truth
+print("[INFO] Loading ground truth...")
 ground_truth_file = config_json['qsm_groundtruth']
-qsm = nib.load(qsm_file).get_fdata()
 ground_truth = nib.load(ground_truth_file).get_fdata()
 
-print("[INFO] Computing evaluation metrics...")
-metrics_dict = all_metrics(qsm, ground_truth)
-del metrics_dict['RMSE']
-metrics_dict['NRMSE'] /= 100.0
-#metrics_dict['HFEN'] 
-#metrics_dict['MAD']
-#metrics_dict['XSIM']
-metrics_dict['CC'] = (metrics_dict['CC'][0] + 1) / 2
-metrics_dict['NMI'] -= 1 
-#metrics_dict['GXE']
+# List to hold all metrics dictionaries with labels
+all_metrics_dicts = []
 
+# Iterate over each QSM estimate
+for estimate in config_json['qsm_estimate']:
+    print(f"[INFO] Loading QSM estimate: {estimate}")
+    qsm = nib.load(estimate).get_fdata()
+
+    print("[INFO] Computing evaluation metrics...")
+    metrics_dict = all_metrics(qsm, ground_truth)
+    del metrics_dict['RMSE']
+    metrics_dict['NRMSE'] /= 100.0
+    metrics_dict['CC'] = (metrics_dict['CC'][0] + 1) / 2
+    metrics_dict['NMI'] -= 1 
+
+    # Create label based on the corresponding entry in the _inputs section
+    input_info = next(input for input in config_json['_inputs'] if input['task_id'] in estimate)
+    label = input_info['id']
+    if input_info['tags']:
+        label += f" ({', '.join(input_info['tags'])})"
+    
+    # Add to the list of all metrics
+    all_metrics_dicts.append((metrics_dict, label))
+
+# Generate and save figure
 print("[INFO] Generating figure...")
-plot_error_metrics(metrics_dict)
+plot_path = plot_error_metrics(all_metrics_dicts, os.path.join(output_dir, 'html'))
 
+# Convert figure to base64 (for JSON output)
 print("[INFO] Converting figure to base64...")
-encoded_image = encode_image_to_base64("metrics_plot.png")
+encoded_image = encode_image_to_base64(plot_path)
 
+# Generate product.json
 print("[INFO] Generating product.json...")
 json_data = create_json_for_brainlife(encoded_image)
 with open('product.json', 'w') as json_file:
     json_file.write(json_data)
 
+# Generate HTML table for metrics
+metrics_table_html = generate_html_table(all_metrics_dicts)
+
+# Generate index.html with plot and table
+generate_index_html(output_dir, plot_path, metrics_table_html)
+
+print("[INFO] Done!")
