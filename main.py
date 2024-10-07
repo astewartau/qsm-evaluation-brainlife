@@ -17,8 +17,8 @@ def plot_error_metrics(all_metrics_dicts, output_dir, title="Error Metrics"):
     # Create a color map for different estimates
     cmap = cm.get_cmap('tab10')
 
-    # Get an array of indices for the x-axis based on the number of metrics
-    x = np.arange(num_metrics)
+    # Get an array of indices for the x-axis based on the number of metrics, adding extra space between each group
+    x = np.arange(0, num_metrics * 2, 2)
     
     # Define the width of each bar
     bar_width = 0.2
