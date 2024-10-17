@@ -27,7 +27,7 @@ import numpy as np
 import csv
 import nibabel as nib
 
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import root_mean_squared_error
 from skimage.metrics import structural_similarity
 from skimage.metrics import normalized_mutual_information
 from skimage.measure import pearson_corr_coeff
@@ -36,17 +36,23 @@ from skimage.restoration import denoise_tv_chambolle
 from scipy.ndimage import gaussian_laplace
 
 def calculate_gradient_magnitude(pred_data):
-    gradients = np.gradient(pred_data)
+    amplified_data = pred_data * 10
+    gradients = np.gradient(amplified_data)
     grad_magnitude = np.sqrt(sum([g**2 for g in gradients]))
-    return grad_magnitude.mean(), grad_magnitude.std()
+    return grad_magnitude[pred_data != 0].mean(), grad_magnitude[pred_data != 0].std()
 
-def calculate_total_variation(image, weight=0.1):
-    denoised_image = denoise_tv_chambolle(image, weight=weight)
-    tv_norm = np.sum(np.abs(image - denoised_image))  # Total variation norm
-    return tv_norm
+def calculate_total_variation(pred_data, weight=0.1):
+    amplified_data = pred_data * 1000
+    denoised_image = denoise_tv_chambolle(amplified_data, weight=weight)
+    nib.save(nib.Nifti1Image(dataobj=denoised_image, affine=None, header=None), "OUT.nii")
+    tv_norm = np.sum(np.abs(amplified_data[pred_data != 0] - denoised_image[pred_data != 0]))  # Total variation norm
+    tv_normalized = tv_norm / np.size(pred_data[pred_data != 0])  # Normalize by total number of non-zero voxels
+    return tv_normalized
 
 def calculate_entropy(pred_data):
-    return shannon_entropy(pred_data)
+    entropy_value = shannon_entropy(pred_data)
+    max_entropy = np.log2(np.prod(pred_data.shape))  # Maximum possible entropy
+    return entropy_value / max_entropy  # Normalised entropy
 
 def calculate_cnr(region1, region2):
     mean_diff = np.abs(np.mean(region1) - np.mean(region2))
@@ -63,8 +69,11 @@ def calculate_snr(pred_data, roi_foreground, roi_background):
     return signal / noise
 
 def calculate_edge_strength(pred_data):
-    edges = gaussian_laplace(pred_data, sigma=1.5)
-    return np.var(edges)
+    amplified_data = pred_data * 100.0
+    edges = gaussian_laplace(amplified_data, sigma=1.5)
+    non_zero_edges = edges[pred_data != 0]
+    return np.var(non_zero_edges)
+
 
 def calculate_rmse(pred_data, ref_data):
     """
@@ -83,9 +92,7 @@ def calculate_rmse(pred_data, ref_data):
         The calculated RMSE value.
 
     """
-    mse = mean_squared_error(pred_data, ref_data)
-    rmse = np.sqrt(mse)
-    return rmse
+    return root_mean_squared_error(pred_data, ref_data)
 
 def calculate_nrmse(pred_data, ref_data):
     """
@@ -267,8 +274,12 @@ def all_metrics(pred_data, ref_data=None, roi=None, roi_foreground=None, roi_bac
         roi = np.array(pred_data != 0, dtype=bool)
 
     bbox = get_bounding_box(roi)
+    roi = np.array(roi[bbox], dtype=bool)
+    if roi_background is not None:
+        roi_background = roi_background[bbox]
+    if roi_foreground is not None:
+        roi_foreground = roi_foreground[bbox]
     pred_data = pred_data[bbox] * roi
-    roi = roi[bbox]
 
     if ref_data is not None:
         ref_data = ref_data[bbox] * roi
@@ -286,23 +297,28 @@ def all_metrics(pred_data, ref_data=None, roi=None, roi_foreground=None, roi_bac
         d['NRMSE'] = calculate_nrmse(pred_data[roi], ref_data[roi])
         d['HFEN'] = calculate_hfen(pred_data, ref_data)
         d['MAD'] = calculate_mad(pred_data[roi], ref_data[roi])
+        d['GXE'] = calculate_gxe(pred_data, ref_data)
         d['XSIM'] = calculate_xsim(pred_data, ref_data)
         d['CC'] = pearson_corr_coeff(pred_data[roi], ref_data[roi])
         d['NMI'] = normalized_mutual_information(pred_data[roi], ref_data[roi])
-        d['GXE'] = calculate_gxe(pred_data, ref_data)
 
     # Quality measures that do not require ground truth
+    d['Minimum'] = pred_data[roi].min()
+    d['Maximum'] = pred_data[roi].max()
+    d['Mean'] = pred_data[roi].mean()
+    d['Median'] = np.median(pred_data[roi])
+    d['Standard deviation'] = pred_data[roi].std()
     d['Gradient Mean'], d['Gradient Std'] = calculate_gradient_magnitude(pred_data)
     d['Total Variation'] = calculate_total_variation(pred_data)
     d['Entropy'] = calculate_entropy(pred_data)
     d['Edge Strength'] = calculate_edge_strength(pred_data)
 
     # CNR calculation if roi_foreground and roi_background are provided
-    if not (roi_foreground == roi_background == None):
+    if roi_foreground is not None and roi_background is not None:
         d['CNR'] = calculate_cnr(pred_data[roi_foreground], pred_data[roi_background])
 
     # SNR calculation if roi_foreground and roi_background are provided
-    if not (roi_foreground == roi_background == None):
+    if roi_foreground is not None and roi_background is not None:
         d['SNR'] = calculate_snr(pred_data, roi_foreground, roi_background)
 
     return d
@@ -326,7 +342,7 @@ def save_as_csv(metrics_dict, filepath):
 
 def save_as_markdown(metrics_dict, filepath):
     """
-    Save the metrics as a markdown table.
+    Save the metrics as a markdown table, adjusting the field widths to fit the longest metric name and value.
 
     Parameters
     ----------
@@ -335,15 +351,21 @@ def save_as_markdown(metrics_dict, filepath):
     filepath : str
         The path to the file to save the results.
     """
+    # Find the longest metric name and value
+    max_key_len = max(len(key) for key in metrics_dict.keys())
+    max_value_len = max(len(f"{value[0]:.6f}") if isinstance(value, tuple) and len(value) == 2 else len(f"{value:.6f}") for value in metrics_dict.values())
+
+    # Create the table with dynamic widths
     with open(filepath, 'w') as file:
-        file.write("| Metric | Value |\n")
-        file.write("|--------|-------|\n")
+        file.write(f"| {'Metric'.ljust(max_key_len)} | {'Value'.ljust(max_value_len)} |\n")
+        file.write(f"|{'-' * (max_key_len + 2)}|{'-' * (max_value_len + 2)}|\n")
+        
         for key, value in metrics_dict.items():
             if isinstance(value, tuple) and len(value) == 2:  # Assuming it's the PearsonRResult
-                file.write(f"| {key} correlation | {value[0]:.6f} |\n")
-                file.write(f"| {key} p-value | {value[1]:.6f} |\n")
+                file.write(f"| {key.ljust(max_key_len)} correlation | {value[0]:.6f} |\n")
+                file.write(f"| {' '.ljust(max_key_len)} p-value    | {value[1]:.6f} |\n")
             else:
-                file.write(f"| {key} | {value:.6f} |\n")
+                file.write(f"| {key.ljust(max_key_len)} | {value:.6f} |\n")
 
 def save_as_json(metrics_dict, filepath):
     """
