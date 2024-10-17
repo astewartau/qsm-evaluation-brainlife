@@ -12,9 +12,10 @@ from eval import all_metrics, save_as_csv, save_as_json, save_as_markdown
 import seaborn as sns
 import pandas as pd
 
-def plot_error_metrics(metrics_dict, output_dir, title="Error Metrics"):
+
+def plot_error_measures(metrics_dict, output_dir, title="Error Metrics"):
     """
-    Generate plots for error measures, statistics, and quality measures.
+    Generate bar plots for error measures per ROI.
 
     Parameters
     ----------
@@ -26,113 +27,145 @@ def plot_error_metrics(metrics_dict, output_dir, title="Error Metrics"):
         Title of the plot, by default "Error Metrics".
     """
     cmap = colormaps['tab10']
-    
-    # Categorize metrics
     error_measures = ['RMSE', 'NRMSE', 'HFEN', 'MAD', 'GXE', 'XSIM', 'CC', 'NMI']
-    statistics = ['Minimum', 'Maximum', 'Mean', 'Median', 'Standard deviation']
-    quality_measures = ['Gradient Mean', 'Gradient Std', 'Total Variation', 'Entropy', 'Edge Strength']
 
-    # 1. Generate bar plots for Error Measures (per ROI)
     for roi_idx, (roi, metrics) in enumerate(metrics_dict.items()):
-        # Check if error measures exist for this ROI
         roi_error_measures = {k: v for k, v in metrics.items() if k in error_measures}
         if roi_error_measures:
             plt.figure(figsize=(12, 6))
             metric_names = list(roi_error_measures.keys())
             metric_values = []
             
-            # Handle tuple-based metrics (like Pearson correlation)
             for metric_value in roi_error_measures.values():
                 if isinstance(metric_value, tuple) and len(metric_value) == 2:
                     metric_values.append(metric_value[0])
                 else:
                     metric_values.append(metric_value)
 
-            # Plot Error Measures for the current ROI
             x = range(len(metric_names))
             plt.bar(x, metric_values, width=0.4, label=roi, color=cmap(roi_idx % 10))
 
-            # Annotate each bar with its value
             for i, value in enumerate(metric_values):
                 plt.text(i, value + 0.01, f"{value:.3f}", ha='center', va='bottom', fontsize=8)
 
-            # Customize the plot
             plt.title(f"{title} - Error Measures for {roi}")
             plt.xlabel('Metric')
             plt.ylabel('Value')
             plt.xticks(range(len(metric_names)), metric_names, rotation=45, ha='right')
             plt.tight_layout()
 
-            # Save plot
             plot_path = os.path.join(output_dir, f"metrics_plot_error_{roi}.png")
             plt.savefig(plot_path)
             plt.close()
 
             print(f"[INFO] Saved error measures plot for {roi} to {plot_path}")
 
-    # 2. Generate combined boxplots per ROI (for statistics)
-    plt.figure(figsize=(12, 6))
+def plot_quality_measures(metrics_dict, output_dir, title="Quality Measures"):
+    """
+    Generate bar plots for quality measures per ROI.
 
-    # Prepare data for boxplot: statistics for each ROI
-    data = []
-    roi_labels = []
-    for roi_label, metrics in metrics_dict.items():
-        if roi_label in ["Air", "Bone", "All", "Muscle", "Calcification"] and not len(metrics_dict) == 1:
-            continue
-        stats_values = [metrics.get(stat) for stat in statistics]
-        # Only add ROI if all stats are available
-        if all(stats_values):
-            data.append(stats_values)
-            roi_labels.append(roi_label)
+    Parameters
+    ----------
+    metrics_dict : dict
+        Dictionary of metrics for each ROI.
+    output_dir : str
+        Directory to save the generated plots.
+    title : str, optional
+        Title of the plot, by default "Quality Measures".
+    """
+    cmap = colormaps['tab10']
+    quality_measures = ['Gradient Mean', 'Gradient Std', 'Total Variation', 'Entropy', 'Edge Strength']
 
-    # Plot boxplots for each ROI's statistics
-    plt.axhline(y=0, color='red', linestyle='--', linewidth=1.5)
-    plt.boxplot(data, tick_labels=roi_labels, patch_artist=True, boxprops=dict(facecolor='lightblue'))
-    plt.ylim([-0.1, +0.3])
-    plt.title("Statistics Combined for Each ROI")
-    plt.xlabel('ROI')
-    plt.ylabel('Value')
-    plt.tight_layout()
-
-    # Save boxplot
-    plot_path = os.path.join(output_dir, "metrics_plot_statistics_combined.png")
-    plt.savefig(plot_path)
-    plt.close()
-
-    print(f"[INFO] Saved boxplot for combined ROI statistics to {plot_path}")
-
-    # 3. Generate bar plots for Quality Measures (per ROI)
     for roi_idx, (roi, metrics) in enumerate(metrics_dict.items()):
         roi_quality_measures = {k: v for k, v in metrics.items() if k in quality_measures}
         if roi_quality_measures:
             plt.figure(figsize=(12, 6))
             metric_names = list(roi_quality_measures.keys())
-            metric_values = []
+            metric_values = [v for v in roi_quality_measures.values()]
 
-            for metric_value in roi_quality_measures.values():
-                metric_values.append(metric_value)
-
-            # Plot Quality Measures for the current ROI
             x = range(len(metric_names))
             plt.bar(x, metric_values, width=0.4, label=roi, color=cmap(roi_idx % 10))
 
-            # Annotate each bar with its value
             for i, value in enumerate(metric_values):
                 plt.text(i, value + 0.01, f"{value:.3f}", ha='center', va='bottom', fontsize=8)
 
-            # Customize the plot
             plt.title(f"{title} - Quality Measures for {roi}")
             plt.xlabel('Metric')
             plt.ylabel('Value')
             plt.xticks(range(len(metric_names)), metric_names, rotation=45, ha='right')
             plt.tight_layout()
 
-            # Save plot
             plot_path = os.path.join(output_dir, f"metrics_plot_quality_{roi}.png")
             plt.savefig(plot_path)
             plt.close()
 
             print(f"[INFO] Saved quality measures plot for {roi} to {plot_path}")
+
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+
+def plot_roi_statistics_boxplot(qsm_estimate, segmentation, labels, output_dir):
+    """
+    Generate boxplots for each ROI using voxel values from QSM estimate and segmentation arrays,
+    with ROI labels extracted from the labels dictionary. Boxplots are ordered by median values.
+
+    Parameters
+    ----------
+    qsm_estimate : numpy.ndarray
+        QSM estimate data.
+    segmentation : numpy.ndarray
+        Segmentation mask where each distinct integer label corresponds to a different ROI.
+    labels : dict
+        A dictionary containing metrics for each ROI, used to extract labels.
+    output_dir : str
+        Directory to save the generated plots.
+    """
+    plt.figure(figsize=(12, 6))
+
+    # Prepare data for boxplot: voxel values for each ROI
+    data = []
+    roi_labels = []
+    unique_labels = np.unique(segmentation)
+
+    for roi_label in unique_labels:
+        if roi_label == 0:  # Skip background
+            continue
+        
+        # Extract the correct label for the ROI from the labels dict, if available
+        label_name = labels.get(roi_label, f"ROI {roi_label}")
+        if label_name in ['Air', 'Bone', 'All', 'Calcification', 'Bone', 'Muscle'] and len(unique_labels) != 2:
+            continue
+        # Extract voxel values for this ROI
+        roi_data = qsm_estimate[segmentation == roi_label]
+        data.append(roi_data)
+        roi_labels.append(label_name)
+
+    # Compute medians for each ROI
+    medians = [np.median(roi_data) for roi_data in data]
+
+    # Sort data and labels by median values
+    sorted_indices = np.argsort(medians)
+    data = [data[i] for i in sorted_indices]
+    roi_labels = [roi_labels[i] for i in sorted_indices]
+
+    # Generate the boxplot
+    plt.boxplot(data, tick_labels=roi_labels, patch_artist=True, boxprops=dict(facecolor='lightblue'), showfliers=False)
+    plt.axhline(y=0, color='red', linestyle='--', linewidth=1.5)
+    plt.title("Voxel Value Distributions for Each ROI (Ordered by Median)")
+    plt.xlabel('ROI')
+    plt.ylabel('Voxel Values')
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+
+    # Save boxplot
+    plot_path = os.path.join(output_dir, "voxel_values_boxplot_by_roi_ordered_by_median.png")
+    plt.savefig(plot_path)
+    plt.close()
+
+    print(f"[INFO] Saved boxplot for voxel values by ROI to {plot_path}")
+
+
 
 def encode_image_to_base64(image_path):
     with open(image_path, "rb") as image_file:
@@ -320,7 +353,10 @@ save_as_json(metrics_dict=metrics_dict, filepath="metrics.json")
 # Generate and save figures
 print("[INFO] Generating figures...")
 plot_dir = os.path.join(output_dir, 'html')
-plot_error_metrics(metrics_dict, plot_dir)
+plot_error_measures(metrics_dict, output_dir)
+if segmentation_np is not None:
+    plot_roi_statistics_boxplot(qsm_estimate_np, segmentation_np, labels, output_dir)
+plot_quality_measures(metrics_dict, output_dir)
 
 # Collect all PNG files in plot_dir
 png_paths = [os.path.join(plot_dir, f) for f in os.listdir(plot_dir) if f.endswith('.png')]
