@@ -298,11 +298,11 @@ def all_metrics(pred_data, ref_data=None, roi=None, roi_foreground=None, roi_bac
     d['Edge Strength'] = calculate_edge_strength(pred_data)
 
     # CNR calculation if roi_foreground and roi_background are provided
-    if roi_foreground is not None and roi_background is not None:
+    if not (roi_foreground == roi_background == None):
         d['CNR'] = calculate_cnr(pred_data[roi_foreground], pred_data[roi_background])
 
     # SNR calculation if roi_foreground and roi_background are provided
-    if roi_foreground is not None and roi_background is not None:
+    if not (roi_foreground == roi_background == None):
         d['SNR'] = calculate_snr(pred_data, roi_foreground, roi_background)
 
     return d
@@ -418,7 +418,7 @@ def main():
 
     print(f"[INFO] Metrics saved to {csv_path}, {md_path}, and {json_path}")
 
-    
+
 if __name__ == "__main__":
     main()
 

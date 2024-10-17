@@ -148,6 +148,19 @@ if segmentation_file:
     segmentation_nii = nib.load(segmentation_file)
     segmentation_np = segmentation_nii.get_fdata()
 
+# Load mask
+mask_file = config_json.get('qsm_mask', None)
+mask_nii = None
+mask_np = None
+if mask_file:
+    print("[INFO] Loading QSM mask...")
+    mask_nii = nib.load(mask_file)
+    mask_np = mask_nii.get_fdata()
+elif segmentation_np:
+    mask_np = np.array(segmentation_np != 0, dtype=int)
+else:
+    mask_np = np.array(qsm_estimate_np != 0, dtype=int)
+
 # List to hold all metrics dictionaries with labels
 all_metrics_dicts = []
 
@@ -158,13 +171,14 @@ for estimate in config_json['qsm_estimate']:
 
     print("[INFO] Computing evaluation metrics...")
 
-    # Determine whether to use ground truth and segmentation
-    roi_foreground = segmentation_np if segmentation_file else None
-    roi_background = None  # Optional: If you have a specific mask for background, assign it here
-
     # Call the updated all_metrics function with optional ground truth and segmentation
-    metrics_dict = all_metrics(qsm, ref_data=qsm_groundtruth_np, roi=None, 
-                               roi_foreground=roi_foreground, roi_background=roi_background)
+    metrics_dict = all_metrics(
+        pred_data=qsm,
+        ref_data=qsm_groundtruth_np,
+        roi=mask_np,
+        roi_foreground=mask_np,
+        roi_background=None
+    )
     
     # Adjust any metrics if necessary
     if 'RMSE' in metrics_dict:
