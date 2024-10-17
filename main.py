@@ -77,7 +77,7 @@ def plot_error_metrics(metrics_dict, output_dir, title="Error Metrics"):
     data = []
     roi_labels = []
     for roi_label, metrics in metrics_dict.items():
-        if roi_label in ["Air", "Bone", "All", "Muscle", "Calcification"]:
+        if roi_label in ["Air", "Bone", "All", "Muscle", "Calcification"] and not len(metrics_dict) == 1:
             continue
         stats_values = [metrics.get(stat) for stat in statistics]
         # Only add ROI if all stats are available
@@ -87,7 +87,7 @@ def plot_error_metrics(metrics_dict, output_dir, title="Error Metrics"):
 
     # Plot boxplots for each ROI's statistics
     plt.axhline(y=0, color='red', linestyle='--', linewidth=1.5)
-    plt.boxplot(data, labels=roi_labels, patch_artist=True, boxprops=dict(facecolor='lightblue'))
+    plt.boxplot(data, tick_labels=roi_labels, patch_artist=True, boxprops=dict(facecolor='lightblue'))
     plt.ylim([-0.1, +0.3])
     plt.title("Statistics Combined for Each ROI")
     plt.xlabel('ROI')
@@ -274,7 +274,7 @@ segmentation_file = config_json.get('parc', None)
 segmentation_nii = None
 segmentation_np = None
 if segmentation_file:
-    print("[INFO] Loading QSM segmentation...")
+    print("[INFO] Loading segmentation...")
     segmentation_nii = nib.load(segmentation_file)
     segmentation_np = segmentation_nii.get_fdata()
 
@@ -302,18 +302,17 @@ else:
 
 print("[INFO] Computing evaluation metrics...")
 
-# FOR EACH DISTINCT ROI IN SEGMENTATION_NP...
-current_roi = mask_np
-
 # Call the updated all_metrics function with optional ground truth and segmentation
 metrics_dict = all_metrics(
     pred_data=qsm_estimate_np,
     ref_data=qsm_groundtruth_np,
-    roi=current_roi,
+    roi=mask_np,
     segmentation=segmentation_np,
     labels=labels
 )
 
+# Save metrics
+print("[INFO] Saving metrics...")
 save_as_markdown(metrics_dict=metrics_dict, filepath="metrics.md")
 save_as_csv(metrics_dict=metrics_dict, filepath="metrics.csv")
 save_as_json(metrics_dict=metrics_dict, filepath="metrics.json")
