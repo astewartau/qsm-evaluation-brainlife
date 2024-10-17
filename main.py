@@ -9,88 +9,218 @@ import nibabel as nib
 import numpy as np
 from eval import all_metrics, save_as_csv, save_as_json, save_as_markdown
 
-def plot_error_metrics(all_metrics_dicts, output_dir, title="Error Metrics"):
-    metrics_keys = list(all_metrics_dicts[0][0].keys())  # The metric names (x-axis categories)
-    num_metrics = len(metrics_keys)
-    num_estimates = len(all_metrics_dicts)
+import seaborn as sns
+import pandas as pd
 
-    # Create a color map for different estimates
+def plot_error_metrics(metrics_dict, output_dir, title="Error Metrics"):
+    """
+    Generate plots for error measures, statistics, and quality measures.
+
+    Parameters
+    ----------
+    metrics_dict : dict
+        Dictionary of metrics for each ROI.
+    output_dir : str
+        Directory to save the generated plots.
+    title : str, optional
+        Title of the plot, by default "Error Metrics".
+    """
     cmap = colormaps['tab10']
-
-    # Get an array of indices for the x-axis based on the number of metrics, adding extra space between each group
-    x = np.arange(0, num_metrics * 2, 2)
     
-    # Define the width of each bar
-    bar_width = 0.2
+    # Categorize metrics
+    error_measures = ['RMSE', 'NRMSE', 'HFEN', 'MAD', 'GXE', 'XSIM', 'CC', 'NMI']
+    statistics = ['Minimum', 'Maximum', 'Mean', 'Median', 'Standard deviation']
+    quality_measures = ['Gradient Mean', 'Gradient Std', 'Total Variation', 'Entropy', 'Edge Strength']
 
+    # 1. Generate bar plots for Error Measures (per ROI)
+    for roi_idx, (roi, metrics) in enumerate(metrics_dict.items()):
+        # Check if error measures exist for this ROI
+        roi_error_measures = {k: v for k, v in metrics.items() if k in error_measures}
+        if roi_error_measures:
+            plt.figure(figsize=(12, 6))
+            metric_names = list(roi_error_measures.keys())
+            metric_values = []
+            
+            # Handle tuple-based metrics (like Pearson correlation)
+            for metric_value in roi_error_measures.values():
+                if isinstance(metric_value, tuple) and len(metric_value) == 2:
+                    metric_values.append(metric_value[0])
+                else:
+                    metric_values.append(metric_value)
+
+            # Plot Error Measures for the current ROI
+            x = range(len(metric_names))
+            plt.bar(x, metric_values, width=0.4, label=roi, color=cmap(roi_idx % 10))
+
+            # Annotate each bar with its value
+            for i, value in enumerate(metric_values):
+                plt.text(i, value + 0.01, f"{value:.3f}", ha='center', va='bottom', fontsize=8)
+
+            # Customize the plot
+            plt.title(f"{title} - Error Measures for {roi}")
+            plt.xlabel('Metric')
+            plt.ylabel('Value')
+            plt.xticks(range(len(metric_names)), metric_names, rotation=45, ha='right')
+            plt.tight_layout()
+
+            # Save plot
+            plot_path = os.path.join(output_dir, f"metrics_plot_error_{roi}.png")
+            plt.savefig(plot_path)
+            plt.close()
+
+            print(f"[INFO] Saved error measures plot for {roi} to {plot_path}")
+
+    # 2. Generate combined boxplots per ROI (for statistics)
     plt.figure(figsize=(12, 6))
 
-    # Loop through each set of metrics and plot with unique colors
-    for idx, (metrics, label) in enumerate(all_metrics_dicts):
-        metric_values = [metrics[metric] for metric in metrics_keys]  # Extract the values for this estimate
-        plt.bar(x + idx * bar_width, metric_values, bar_width, label=label, color=cmap(idx / num_estimates))
+    # Prepare data for boxplot: statistics for each ROI
+    data = []
+    roi_labels = []
+    for roi_label, metrics in metrics_dict.items():
+        if roi_label in ["Air", "Bone", "All", "Muscle", "Calcification"]:
+            continue
+        stats_values = [metrics.get(stat) for stat in statistics]
+        # Only add ROI if all stats are available
+        if all(stats_values):
+            data.append(stats_values)
+            roi_labels.append(roi_label)
 
-        # Annotate each bar with its value
-        for i, value in enumerate(metric_values):
-            plt.text(x[i] + idx * bar_width, value + 0.01, f"{value:.3f}", ha='center', va='bottom', fontsize=8)
-
-    # Set the labels and title
-    plt.xlabel('Metric')
+    # Plot boxplots for each ROI's statistics
+    plt.axhline(y=0, color='red', linestyle='--', linewidth=1.5)
+    plt.boxplot(data, labels=roi_labels, patch_artist=True, boxprops=dict(facecolor='lightblue'))
+    plt.ylim([-0.1, +0.3])
+    plt.title("Statistics Combined for Each ROI")
+    plt.xlabel('ROI')
     plt.ylabel('Value')
-    plt.title('QSM Evaluation Metrics')
-    plt.xticks(x + bar_width * (num_estimates - 1) / 2, metrics_keys, rotation=45)
-    plt.legend()
     plt.tight_layout()
 
-    # Save the plot as a PNG file in the output directory
-    plot_path = os.path.join(output_dir, "metrics_plot.png")
+    # Save boxplot
+    plot_path = os.path.join(output_dir, "metrics_plot_statistics_combined.png")
     plt.savefig(plot_path)
     plt.close()
 
-    return plot_path
+    print(f"[INFO] Saved boxplot for combined ROI statistics to {plot_path}")
+
+    # 3. Generate bar plots for Quality Measures (per ROI)
+    for roi_idx, (roi, metrics) in enumerate(metrics_dict.items()):
+        roi_quality_measures = {k: v for k, v in metrics.items() if k in quality_measures}
+        if roi_quality_measures:
+            plt.figure(figsize=(12, 6))
+            metric_names = list(roi_quality_measures.keys())
+            metric_values = []
+
+            for metric_value in roi_quality_measures.values():
+                metric_values.append(metric_value)
+
+            # Plot Quality Measures for the current ROI
+            x = range(len(metric_names))
+            plt.bar(x, metric_values, width=0.4, label=roi, color=cmap(roi_idx % 10))
+
+            # Annotate each bar with its value
+            for i, value in enumerate(metric_values):
+                plt.text(i, value + 0.01, f"{value:.3f}", ha='center', va='bottom', fontsize=8)
+
+            # Customize the plot
+            plt.title(f"{title} - Quality Measures for {roi}")
+            plt.xlabel('Metric')
+            plt.ylabel('Value')
+            plt.xticks(range(len(metric_names)), metric_names, rotation=45, ha='right')
+            plt.tight_layout()
+
+            # Save plot
+            plot_path = os.path.join(output_dir, f"metrics_plot_quality_{roi}.png")
+            plt.savefig(plot_path)
+            plt.close()
+
+            print(f"[INFO] Saved quality measures plot for {roi} to {plot_path}")
 
 def encode_image_to_base64(image_path):
     with open(image_path, "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
     return encoded_string
 
-def create_json_for_brainlife(encoded_image, image_title="QSM Error Metrics"):
+
+def create_json_for_brainlife(encoded_images):
+    """
+    Creates a Brainlife-compatible JSON structure with multiple base64-encoded images.
+
+    Parameters
+    ----------
+    encoded_images : list
+        A list of dictionaries with image titles and base64 encoded images.
+    
+    Returns
+    -------
+    str
+        JSON string of the Brainlife-compatible structure.
+    """
     data = {
         "brainlife": [
             {
                 "type": "image/png",
-                "name": image_title,
-                "base64": encoded_image
+                "name": image['name'],
+                "base64": image['base64']
             }
+            for image in encoded_images
         ]
     }
     return json.dumps(data, indent=4)
 
-def generate_html_table(all_metrics_dicts):
-    # Extract unique metric names from the first estimate's metrics
-    metrics_keys = list(all_metrics_dicts[0][0].keys())
+def generate_html_table(metrics_dict):
+    """
+    Generate an HTML table with columns for Metric, Region (ROI), and Value.
 
+    Parameters
+    ----------
+    metrics_dict : dict
+        Dictionary of metrics for each ROI.
+
+    Returns
+    -------
+    str
+        HTML string representing the table.
+    """
     # Start creating the table HTML
     html = "<table border='1' cellpadding='5'>"
-    html += "<thead><tr><th>Estimate</th>"
+    html += "<thead><tr><th>Metric</th><th>Region</th><th>Value</th></tr></thead>"
 
-    # Add columns for each metric name
-    for metric in metrics_keys:
-        html += f"<th>{metric}</th>"
-    html += "</tr></thead>"
-
-    # Add rows for each QSM estimate
+    # Add rows for each ROI
     html += "<tbody>"
-    for metrics, label in all_metrics_dicts:
-        html += f"<tr><td>{label}</td>"
-        for metric in metrics_keys:
-            html += f"<td>{metrics[metric]:.3f}</td>"
-        html += "</tr>"
+    for roi_label, metrics in metrics_dict.items():
+        for metric, value in metrics.items():
+            html += f"<tr><td>{metric}</td><td>{roi_label}</td>"
+
+            # Handle tuple-based metrics (e.g., correlation and p-value)
+            if isinstance(value, tuple) and len(value) == 2:
+                html += f"<td>{value[0]:.3f} (correlation), {value[1]:.3f} (p-value)</td>"
+            else:
+                html += f"<td>{value:.3f}</td>"
+
+            html += "</tr>"
     html += "</tbody></table>"
 
     return html
 
-def generate_index_html(output_dir, plot_path, metrics_table_html):
+def generate_index_html(output_dir, image_paths, metrics_table_html):
+    """
+    Generates an HTML file with all metrics and images.
+
+    Parameters
+    ----------
+    output_dir : str
+        Directory to save the HTML file.
+    image_paths : list
+        List of paths to PNG images.
+    metrics_table_html : str
+        HTML content for the metrics table.
+    """
+    # Create the image HTML tags
+    image_html = ""
+    for image_path in image_paths:
+        image_filename = os.path.basename(image_path)
+        image_html += f'<h2>{image_filename}</h2>\n'
+        image_html += f'<img src="html/{image_filename}" alt="{image_filename}">\n'
+
     # Create the index.html content
     html_content = f"""
     <html>
@@ -99,8 +229,8 @@ def generate_index_html(output_dir, plot_path, metrics_table_html):
     <h1>QSM Evaluation Metrics</h1>
     <h2>Metrics Table</h2>
     {metrics_table_html}
-    <h2>Metrics Plot</h2>
-    <img src="html/metrics_plot.png" alt="QSM Evaluation Metrics">
+    <h2>Metrics Plots</h2>
+    {image_html}
     </body>
     </html>
     """
@@ -140,13 +270,22 @@ if qsm_groundtruth_file:
     qsm_groundtruth_np = qsm_groundtruth_nii.get_fdata()
 
 # Load segmentation
-segmentation_file = config_json.get('qsm_segmentation', None)
+segmentation_file = config_json.get('parc', None)
 segmentation_nii = None
 segmentation_np = None
 if segmentation_file:
     print("[INFO] Loading QSM segmentation...")
     segmentation_nii = nib.load(segmentation_file)
     segmentation_np = segmentation_nii.get_fdata()
+
+# Load segmentation labels
+labels_file = config_json.get('label', None)
+labels = None
+if labels_file:
+    print("[INFO] Loading segmentation labels...")
+    with open(labels_file, 'r') as labels_fh:
+        label_data = json.load(labels_fh)
+    labels = {item['voxel_value']: item['name'] for item in label_data}
 
 # Load mask
 mask_file = config_json.get('qsm_mask', None)
@@ -161,9 +300,6 @@ elif segmentation_np:
 else:
     mask_np = np.array(qsm_estimate_np != 0, dtype=int)
 
-# List to hold all metrics dictionaries with labels
-all_metrics_dicts = []
-
 print("[INFO] Computing evaluation metrics...")
 
 # FOR EACH DISTINCT ROI IN SEGMENTATION_NP...
@@ -174,54 +310,40 @@ metrics_dict = all_metrics(
     pred_data=qsm_estimate_np,
     ref_data=qsm_groundtruth_np,
     roi=current_roi,
-    roi_foreground=current_roi,
-    roi_background=None
+    segmentation=segmentation_np,
+    labels=labels
 )
-
-# Adjust any metrics if necessary
-if 'RMSE' in metrics_dict:
-    del metrics_dict['RMSE']
-if 'NRMSE' in metrics_dict:
-    metrics_dict['NRMSE'] /= 100.0
-if 'CC' in metrics_dict and isinstance(metrics_dict['CC'], tuple):
-    metrics_dict['CC'] = (metrics_dict['CC'][0] + 1) / 2  # Normalise Pearson correlation
-if 'NMI' in metrics_dict:
-    metrics_dict['NMI'] -= 1  # Normalisation step
 
 save_as_markdown(metrics_dict=metrics_dict, filepath="metrics.md")
 save_as_csv(metrics_dict=metrics_dict, filepath="metrics.csv")
 save_as_json(metrics_dict=metrics_dict, filepath="metrics.json")
 
-# Get algorithm name
-algo_name = "QSM Estimate"
-if '_inputs' in config_json:
-    input_info = next(input for input in config_json['_inputs'] if input['task_id'] in qsm_estimate_file)
-    algo_name = input_info['id']
-    if input_info.get('tags'):
-        algo_name += f" ({', '.join(input_info['tags'])})"
+# Generate and save figures
+print("[INFO] Generating figures...")
+plot_dir = os.path.join(output_dir, 'html')
+plot_error_metrics(metrics_dict, plot_dir)
 
-# Add metrics with algorithm name
-all_metrics_dicts.append((metrics_dict, algo_name))
+# Collect all PNG files in plot_dir
+png_paths = [os.path.join(plot_dir, f) for f in os.listdir(plot_dir) if f.endswith('.png')]
 
-# Generate and save figure
-print("[INFO] Generating figure...")
-plot_path = plot_error_metrics(all_metrics_dicts, os.path.join(output_dir, 'html'))
+# Convert each PNG file to base64
+encoded_images = []
+for png_path in png_paths:
+    print(f"[INFO] Converting {png_path} to base64...")
+    encoded_image = encode_image_to_base64(png_path)
+    encoded_images.append({"name": os.path.basename(png_path), "base64": encoded_image})
 
-# Convert figure to base64 (for JSON output)
-print("[INFO] Converting figure to base64...")
-encoded_image = encode_image_to_base64(plot_path)
-
-# Generate product.json
+# Generate product.json with all base64 images
 print("[INFO] Generating product.json...")
-json_data = create_json_for_brainlife(encoded_image)
+json_data = create_json_for_brainlife(encoded_images)
 with open('product.json', 'w') as json_file:
     json_file.write(json_data)
 
 # Generate HTML table for metrics
-metrics_table_html = generate_html_table(all_metrics_dicts)
+metrics_table_html = generate_html_table(metrics_dict)
 
-# Generate index.html with plot and table
-generate_index_html(output_dir, plot_path, metrics_table_html)
+# Generate index.html with all images and table
+generate_index_html(output_dir, png_paths, metrics_table_html)
 
 print("[INFO] Done!")
 

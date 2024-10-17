@@ -132,3 +132,10 @@ in_dir/
 work_dir/
 out_dir/
 config.json
+html
+metrics.csv
+metrics.json
+metrics.md
+*.nii
+product.json
+*.sif
