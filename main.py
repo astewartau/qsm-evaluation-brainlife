@@ -2,12 +2,12 @@
 
 import os
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
+from matplotlib import colormaps
 import json
 import base64
 import nibabel as nib
 import numpy as np
-from eval import all_metrics
+from eval import all_metrics, save_as_csv, save_as_json, save_as_markdown
 
 def plot_error_metrics(all_metrics_dicts, output_dir, title="Error Metrics"):
     metrics_keys = list(all_metrics_dicts[0][0].keys())  # The metric names (x-axis categories)
@@ -15,7 +15,7 @@ def plot_error_metrics(all_metrics_dicts, output_dir, title="Error Metrics"):
     num_estimates = len(all_metrics_dicts)
 
     # Create a color map for different estimates
-    cmap = cm.get_cmap('tab10')
+    cmap = colormaps['tab10']
 
     # Get an array of indices for the x-axis based on the number of metrics, adding extra space between each group
     x = np.arange(0, num_metrics * 2, 2)
@@ -164,40 +164,44 @@ else:
 # List to hold all metrics dictionaries with labels
 all_metrics_dicts = []
 
-# Iterate over each QSM estimate
-for estimate in config_json['qsm_estimate']:
-    print(f"[INFO] Loading QSM estimate: {estimate}")
-    qsm = nib.load(estimate).get_fdata()
+print("[INFO] Computing evaluation metrics...")
 
-    print("[INFO] Computing evaluation metrics...")
+# FOR EACH DISTINCT ROI IN SEGMENTATION_NP...
+current_roi = mask_np
 
-    # Call the updated all_metrics function with optional ground truth and segmentation
-    metrics_dict = all_metrics(
-        pred_data=qsm,
-        ref_data=qsm_groundtruth_np,
-        roi=mask_np,
-        roi_foreground=mask_np,
-        roi_background=None
-    )
-    
-    # Adjust any metrics if necessary
-    if 'RMSE' in metrics_dict:
-        del metrics_dict['RMSE']
-    if 'NRMSE' in metrics_dict:
-        metrics_dict['NRMSE'] /= 100.0
-    if 'CC' in metrics_dict and isinstance(metrics_dict['CC'], tuple):
-        metrics_dict['CC'] = (metrics_dict['CC'][0] + 1) / 2  # Normalise Pearson correlation
-    if 'NMI' in metrics_dict:
-        metrics_dict['NMI'] -= 1  # Normalisation step
+# Call the updated all_metrics function with optional ground truth and segmentation
+metrics_dict = all_metrics(
+    pred_data=qsm_estimate_np,
+    ref_data=qsm_groundtruth_np,
+    roi=current_roi,
+    roi_foreground=current_roi,
+    roi_background=None
+)
 
-    # Create label based on the corresponding entry in the _inputs section
-    input_info = next(input for input in config_json['_inputs'] if input['task_id'] in estimate)
-    label = input_info['id']
+# Adjust any metrics if necessary
+if 'RMSE' in metrics_dict:
+    del metrics_dict['RMSE']
+if 'NRMSE' in metrics_dict:
+    metrics_dict['NRMSE'] /= 100.0
+if 'CC' in metrics_dict and isinstance(metrics_dict['CC'], tuple):
+    metrics_dict['CC'] = (metrics_dict['CC'][0] + 1) / 2  # Normalise Pearson correlation
+if 'NMI' in metrics_dict:
+    metrics_dict['NMI'] -= 1  # Normalisation step
+
+save_as_markdown(metrics_dict=metrics_dict, filepath="metrics.md")
+save_as_csv(metrics_dict=metrics_dict, filepath="metrics.csv")
+save_as_json(metrics_dict=metrics_dict, filepath="metrics.json")
+
+# Get algorithm name
+algo_name = "QSM Estimate"
+if '_inputs' in config_json:
+    input_info = next(input for input in config_json['_inputs'] if input['task_id'] in qsm_estimate_file)
+    algo_name = input_info['id']
     if input_info.get('tags'):
-        label += f" ({', '.join(input_info['tags'])})"
-    
-    # Add to the list of all metrics
-    all_metrics_dicts.append((metrics_dict, label))
+        algo_name += f" ({', '.join(input_info['tags'])})"
+
+# Add metrics with algorithm name
+all_metrics_dicts.append((metrics_dict, algo_name))
 
 # Generate and save figure
 print("[INFO] Generating figure...")
@@ -220,3 +224,4 @@ metrics_table_html = generate_html_table(all_metrics_dicts)
 generate_index_html(output_dir, plot_path, metrics_table_html)
 
 print("[INFO] Done!")
+
