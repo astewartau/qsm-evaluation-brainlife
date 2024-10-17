@@ -7,7 +7,7 @@ import json
 import base64
 import nibabel as nib
 import numpy as np
-from metrics import all_metrics
+from eval import all_metrics
 
 def plot_error_metrics(all_metrics_dicts, output_dir, title="Error Metrics"):
     metrics_keys = list(all_metrics_dicts[0][0].keys())  # The metric names (x-axis categories)
@@ -122,10 +122,31 @@ output_dir = "html"
 os.makedirs(output_dir, exist_ok=True)
 os.makedirs(os.path.join(output_dir, 'html'), exist_ok=True)
 
-# Load ground truth
-print("[INFO] Loading ground truth...")
-ground_truth_file = config_json['qsm_groundtruth']
-ground_truth = nib.load(ground_truth_file).get_fdata()
+# Load QSM estimate
+qsm_estimate_file = config_json.get('qsm_estimate', None)
+print("[INFO] Loading QSM estimate...")
+if not qsm_estimate_file:
+    raise RuntimeError("QSM estimate missing from config.json!")
+qsm_estimate_nii = nib.load(qsm_estimate_file)
+qsm_estimate_np = qsm_estimate_nii.get_fdata()
+
+# Load QSM ground truth
+qsm_groundtruth_file = config_json.get('qsm_groundtruth', None)
+qsm_groundtruth_nii = None
+qsm_groundtruth_np = None
+if qsm_groundtruth_file:
+    print("[INFO] Loading QSM ground truth...")
+    qsm_groundtruth_nii = nib.load(qsm_groundtruth_file)
+    qsm_groundtruth_np = qsm_groundtruth_nii.get_fdata()
+
+# Load segmentation
+segmentation_file = config_json.get('qsm_segmentation', None)
+segmentation_nii = None
+segmentation_np = None
+if segmentation_file:
+    print("[INFO] Loading QSM segmentation...")
+    segmentation_nii = nib.load(segmentation_file)
+    segmentation_np = segmentation_nii.get_fdata()
 
 # List to hold all metrics dictionaries with labels
 all_metrics_dicts = []
@@ -136,16 +157,29 @@ for estimate in config_json['qsm_estimate']:
     qsm = nib.load(estimate).get_fdata()
 
     print("[INFO] Computing evaluation metrics...")
-    metrics_dict = all_metrics(qsm, ground_truth)
-    del metrics_dict['RMSE']
-    metrics_dict['NRMSE'] /= 100.0
-    metrics_dict['CC'] = (metrics_dict['CC'][0] + 1) / 2
-    metrics_dict['NMI'] -= 1 
+
+    # Determine whether to use ground truth and segmentation
+    roi_foreground = segmentation_np if segmentation_file else None
+    roi_background = None  # Optional: If you have a specific mask for background, assign it here
+
+    # Call the updated all_metrics function with optional ground truth and segmentation
+    metrics_dict = all_metrics(qsm, ref_data=qsm_groundtruth_np, roi=None, 
+                               roi_foreground=roi_foreground, roi_background=roi_background)
+    
+    # Adjust any metrics if necessary
+    if 'RMSE' in metrics_dict:
+        del metrics_dict['RMSE']
+    if 'NRMSE' in metrics_dict:
+        metrics_dict['NRMSE'] /= 100.0
+    if 'CC' in metrics_dict and isinstance(metrics_dict['CC'], tuple):
+        metrics_dict['CC'] = (metrics_dict['CC'][0] + 1) / 2  # Normalise Pearson correlation
+    if 'NMI' in metrics_dict:
+        metrics_dict['NMI'] -= 1  # Normalisation step
 
     # Create label based on the corresponding entry in the _inputs section
     input_info = next(input for input in config_json['_inputs'] if input['task_id'] in estimate)
     label = input_info['id']
-    if input_info['tags']:
+    if input_info.get('tags'):
         label += f" ({', '.join(input_info['tags'])})"
     
     # Add to the list of all metrics

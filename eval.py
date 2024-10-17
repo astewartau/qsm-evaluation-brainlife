@@ -1,5 +1,7 @@
+#!/usr/bin/env python
+
 """
-metrics.py
+eval.py
 
 This module provides functions to compute various error metrics between 3D predicted and reference 
 data arrays. The primary function, `all_metrics()`, returns a dictionary of all computed metrics.
@@ -24,11 +26,45 @@ import os
 import numpy as np
 import csv
 import nibabel as nib
+
 from sklearn.metrics import mean_squared_error
 from skimage.metrics import structural_similarity
 from skimage.metrics import normalized_mutual_information
-from scipy.ndimage import gaussian_laplace
 from skimage.measure import pearson_corr_coeff
+from skimage.measure import shannon_entropy
+from skimage.restoration import denoise_tv_chambolle
+from scipy.ndimage import gaussian_laplace
+
+def calculate_gradient_magnitude(pred_data):
+    gradients = np.gradient(pred_data)
+    grad_magnitude = np.sqrt(sum([g**2 for g in gradients]))
+    return grad_magnitude.mean(), grad_magnitude.std()
+
+def calculate_total_variation(image, weight=0.1):
+    denoised_image = denoise_tv_chambolle(image, weight=weight)
+    tv_norm = np.sum(np.abs(image - denoised_image))  # Total variation norm
+    return tv_norm
+
+def calculate_entropy(pred_data):
+    return shannon_entropy(pred_data)
+
+def calculate_cnr(region1, region2):
+    mean_diff = np.abs(np.mean(region1) - np.mean(region2))
+    noise = np.std(region1) + np.std(region2)
+    if noise == 0:
+        return float('inf')  # Handle the case where noise is zero
+    return mean_diff / noise
+
+def calculate_snr(pred_data, roi_foreground, roi_background):
+    signal = np.mean(pred_data[roi_foreground == 1])  # Mean intensity in the signal region
+    noise = np.std(pred_data[roi_background == 1])  # Standard deviation in the background
+    if noise == 0:
+        return float('inf')  # Handle the case where noise is zero
+    return signal / noise
+
+def calculate_edge_strength(pred_data):
+    edges = gaussian_laplace(pred_data, sigma=1.5)
+    return np.var(edges)
 
 def calculate_rmse(pred_data, ref_data):
     """
@@ -100,7 +136,7 @@ def calculate_hfen(pred_data, ref_data):
     hfen = np.linalg.norm(LoG_ref - LoG_pred)/np.linalg.norm(LoG_ref)
     return hfen
 
-def calculate_xsim(pred_data, ref_data):
+def calculate_xsim(pred_data, ref_data, data_range=None):
     """
     Calculate the structural similarity (XSIM) between the predicted and reference data.
 
@@ -110,14 +146,20 @@ def calculate_xsim(pred_data, ref_data):
         Predicted data as a numpy array.
     ref_data : numpy.ndarray
         Reference data as a numpy array.
+    data_range : float
+        Expected data range.
 
     Returns
     -------
     float
         The calculated structural similarity value.
 
+    References
+    ----------
+    .. [1] Milovic, C., et al. (2024). XSIM: A structural similarity index measure optimized for MRI QSM. Magnetic Resonance in Medicine. doi:10.1002/mrm.30271
     """
-    xsim = structural_similarity(pred_data,ref_data,win_size = 3, K1 = 0.01, K2 = 0.001, data_range = 1)
+    if not data_range: data_range = ref_data.max() - ref_data.min()
+    xsim = structural_similarity(pred_data, ref_data, win_size=3, K1=0.01, K2=0.001, data_range=data_range)
     return xsim
 
 def calculate_mad(pred_data, ref_data):
@@ -195,53 +237,73 @@ def get_bounding_box(roi):
     return tuple(slice(min_coords[d], max_coords[d]) for d in range(roi.ndim))
 
 
-def all_metrics(pred_data, ref_data, roi=None):
+def all_metrics(pred_data, ref_data=None, roi=None, roi_foreground=None, roi_background=None):
     """
-    Calculate various error metrics between the predicted and reference data.
+    Calculate various error and quality metrics between the predicted data and the reference data (optional).
 
     Parameters
     ----------
     pred_data : numpy.ndarray
         Predicted data as a numpy array.
-    ref_data : numpy.ndarray
-        Reference data as a numpy array.
+    ref_data : numpy.ndarray, optional
+        Reference data as a numpy array. If not provided, only quality metrics without a reference are computed.
     roi : numpy.ndarray, optional
-        A binary mask defining a region of interest within the data. If not provided,
-        the full extent of pred_data and ref_data is used.
+        A binary mask defining a region of interest within the data. If not provided, the full extent of pred_data is used.
+    roi_foreground : numpy.ndarray, optional
+        A binary mask defining the foreground (signal region) for SNR calculation. Required for SNR.
+    roi_background : numpy.ndarray, optional
+        A binary mask defining the background (noise region) for SNR calculation. Required for SNR.
 
     Returns
     -------
     dict
-        A dictionary of calculated error metrics, including RMSE, NRMSE, HFEN, XSIM, MAD, 
-        CC (Pearson Correlation Coefficient), NMI (Normalized Mutual Information) and GXE 
-        (Gradient difference error).
-
+        A dictionary of calculated metrics, including RMSE, NRMSE, HFEN, XSIM, MAD, CC, NMI, GXE, and quality measures
+        such as gradient magnitude, total variation, entropy, CNR, SNR, and edge strength.
     """
     d = dict()
 
+    # Define the region of interest if not provided
     if roi is None:
         roi = np.array(pred_data != 0, dtype=bool)
 
     bbox = get_bounding_box(roi)
-    pred_data = pred_data[bbox]
-    ref_data = ref_data[bbox]
+    pred_data = pred_data[bbox] * roi
     roi = roi[bbox]
 
-    if np.isnan(pred_data).any() or np.isnan(ref_data).any():
-        print("Input arrays contain NaN values.")
-    if np.std(pred_data) == 0 or np.std(ref_data) == 0:
-        print(np.std(pred_data))
-        print(np.std(ref_data))
-        print("One of the input arrays has no variance.")
+    if ref_data is not None:
+        ref_data = ref_data[bbox] * roi
 
-    d['RMSE'] = calculate_rmse(pred_data[roi], ref_data[roi])
-    d['NRMSE'] = calculate_nrmse(pred_data[roi], ref_data[roi])
-    d['HFEN'] = calculate_hfen(pred_data, ref_data)  # does not flatten
-    d['MAD'] = calculate_mad(pred_data[roi], ref_data[roi])
-    d['GXE'] = calculate_gxe(pred_data, ref_data)  # does not flatten
-    d['XSIM'] = calculate_xsim(pred_data, ref_data)  # does not flatten
-    d['CC'] = pearson_corr_coeff(pred_data[roi], ref_data[roi])
-    d['NMI'] = normalized_mutual_information(pred_data[roi], ref_data[roi])
+        # Handle NaN or zero variance cases
+        if np.isnan(pred_data).any() or np.isnan(ref_data).any():
+            print("Input arrays contain NaN values.")
+        if np.std(pred_data) == 0 or np.std(ref_data) == 0:
+            print(np.std(pred_data))
+            print(np.std(ref_data))
+            print("One of the input arrays has no variance.")
+
+        # Metrics requiring ground truth (reference data)
+        d['RMSE'] = calculate_rmse(pred_data[roi], ref_data[roi])
+        d['NRMSE'] = calculate_nrmse(pred_data[roi], ref_data[roi])
+        d['HFEN'] = calculate_hfen(pred_data, ref_data)
+        d['MAD'] = calculate_mad(pred_data[roi], ref_data[roi])
+        d['XSIM'] = calculate_xsim(pred_data, ref_data)
+        d['CC'] = pearson_corr_coeff(pred_data[roi], ref_data[roi])
+        d['NMI'] = normalized_mutual_information(pred_data[roi], ref_data[roi])
+        d['GXE'] = calculate_gxe(pred_data, ref_data)
+
+    # Quality measures that do not require ground truth
+    d['Gradient Mean'], d['Gradient Std'] = calculate_gradient_magnitude(pred_data)
+    d['Total Variation'] = calculate_total_variation(pred_data)
+    d['Entropy'] = calculate_entropy(pred_data)
+    d['Edge Strength'] = calculate_edge_strength(pred_data)
+
+    # CNR calculation if roi_foreground and roi_background are provided
+    if roi_foreground is not None and roi_background is not None:
+        d['CNR'] = calculate_cnr(pred_data[roi_foreground], pred_data[roi_background])
+
+    # SNR calculation if roi_foreground and roi_background are provided
+    if roi_foreground is not None and roi_background is not None:
+        d['SNR'] = calculate_snr(pred_data, roi_foreground, roi_background)
 
     return d
 
@@ -298,36 +360,65 @@ def save_as_json(metrics_dict, filepath):
         json.dump(metrics_dict, file, indent=4)
 
 
-if __name__ == "__main__":
-    
+def main():
     parser = argparse.ArgumentParser(description='Compute metrics for 3D images.')
-    parser.add_argument('ground_truth', type=str, help='Path to the ground truth NIFTI image.')
-    parser.add_argument('recon', type=str, help='Path to the reconstructed NIFTI image.')
+    parser.add_argument('--ground_truth', type=str, help='Path to the ground truth NIFTI image (optional).')
+    parser.add_argument('--estimate', type=str, required=True, help='Path to the reconstructed NIFTI image.')
     parser.add_argument('--roi', type=str, help='Path to the ROI NIFTI image (optional).')
+    parser.add_argument('--roi_foreground', type=str, help='Path to the ROI foreground (signal region) NIFTI image (optional, required for SNR/CNR).')
+    parser.add_argument('--roi_background', type=str, help='Path to the ROI background (noise region) NIFTI image (optional, required for SNR/CNR).')
     parser.add_argument('--output_dir', type=str, default='./', help='Directory to save metrics.')
     args = parser.parse_args()
 
-    # Load images
-    gt_img = nib.load(args.ground_truth).get_fdata()
-    recon_img = nib.load(args.recon).get_fdata()
-    recon_dir = os.path.dirname(args.recon)
+    # Load reconstructed image
+    print("[INFO] Loading reconstructed image...")
+    recon_img = nib.load(args.estimate).get_fdata()
 
+    # Load ground truth image (if provided)
+    if args.ground_truth:
+        print("[INFO] Loading ground truth image...")
+        gt_img = nib.load(args.ground_truth).get_fdata()
+    else:
+        gt_img = None
+
+    # Load ROI (if provided)
     if args.roi:
+        print("[INFO] Loading ROI image...")
         roi_img = np.array(nib.load(args.roi).get_fdata(), dtype=bool)
     else:
         roi_img = None
 
+    # Load ROI foreground and background (if provided)
+    if args.roi_foreground:
+        print("[INFO] Loading ROI foreground (signal region) image...")
+        roi_foreground_img = np.array(nib.load(args.roi_foreground).get_fdata(), dtype=bool)
+    else:
+        roi_foreground_img = None
+
+    if args.roi_background:
+        print("[INFO] Loading ROI background (noise region) image...")
+        roi_background_img = np.array(nib.load(args.roi_background).get_fdata(), dtype=bool)
+    else:
+        roi_background_img = None
+
     # Compute metrics
-    metrics = all_metrics(recon_img, gt_img, roi_img)
+    print("[INFO] Computing metrics...")
+    metrics = all_metrics(recon_img, ref_data=gt_img, roi=roi_img, 
+                          roi_foreground=roi_foreground_img, roi_background=roi_background_img)
 
     # Save metrics
-    csv_path = os.path.join(args.output_dir, os.path.join(recon_dir, 'metrics.csv'))
-    md_path = os.path.join(args.output_dir, os.path.join(recon_dir, 'metrics.md'))
-    json_path = os.path.join(args.output_dir, os.path.join(recon_dir, 'metrics.json'))
+    print(f"[INFO] Saving results to {args.output_dir}...")
+    csv_path = os.path.join(args.output_dir, 'metrics.csv')
+    md_path = os.path.join(args.output_dir, 'metrics.md')
+    json_path = os.path.join(args.output_dir, 'metrics.json')
 
     save_as_csv(metrics, csv_path)
     save_as_markdown(metrics, md_path)
     save_as_json(metrics, json_path)
 
-    print(f"Metrics saved to {csv_path}, {md_path}, and {json_path}")
+    print(f"[INFO] Metrics saved to {csv_path}, {md_path}, and {json_path}")
+
     
+if __name__ == "__main__":
+    main()
+
