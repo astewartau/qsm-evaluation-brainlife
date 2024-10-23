@@ -328,7 +328,7 @@ if mask_file:
     print("[INFO] Loading QSM mask...")
     mask_nii = nib.load(mask_file)
     mask_np = mask_nii.get_fdata()
-elif segmentation_np:
+elif segmentation_np is not None:
     mask_np = np.array(segmentation_np != 0, dtype=int)
 else:
     mask_np = np.array(qsm_estimate_np != 0, dtype=int)
