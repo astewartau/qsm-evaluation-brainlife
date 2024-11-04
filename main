@@ -9,7 +9,16 @@ echo "[INFO] Pulling Python v3.9 container..."
 singularity pull docker://python:3.9-bookworm
 
 echo "[INFO] Installing pip packages"
-singularity exec python_3.9-bookworm.sif pip install --user nibabel matplotlib lazy_loader PyWavelets scikit-learn scikit-image seaborn
+singularity exec python_3.9-bookworm.sif pip install --user \
+    nibabel \
+    matplotlib \
+    lazy_loader \
+    PyWavelets \
+    scikit-learn \
+    scikit-image \
+    seaborn \
+    qsm-forward \
+    plotly
 
 echo "[INFO] Starting main.py..."
 singularity exec python_3.9-bookworm.sif python3 main.py

@@ -1,0 +1,18 @@
+{
+    "Caudate": 0.044,
+    "Globus pallidus": 0.131,
+    "Putamen": 0.038,
+    "Red nucleus": 0.100,
+    "Dentate nucleus": 0.152,
+    "Substantia nigra & subthalamic nucleus": 0.111,
+    "Thalamus": 0.020,
+    "White matter": -0.030,
+    "Gray matter": 0.020,
+    "CSF": 0.019,
+    "Blood": 0.190,
+    "Fat": 0.019,
+    "Bone": -2.100,
+    "Air": 9.200,
+    "Muscle": 0.000,
+    "Calcification": -3.300
+}
