@@ -18,7 +18,7 @@ from plotly.io import to_html
 
 from skimage.filters import threshold_otsu
 
-def plot_metrics_by_region(metrics_dict, output_dir, title="Error Metrics by Region"):
+def plot_metrics_by_region(metrics_dict, title="Error Metrics by Region"):
     """
     Generate a static bar plot with metrics on the x-axis and regions (ROIs) as the legend.
 
@@ -26,8 +26,6 @@ def plot_metrics_by_region(metrics_dict, output_dir, title="Error Metrics by Reg
     ----------
     metrics_dict : dict
         Dictionary of metrics for each ROI.
-    output_dir : str
-        Directory to save the generated plot.
     title : str, optional
         Title of the plot, by default "Error Metrics by Region".
     """
@@ -61,13 +59,9 @@ def plot_metrics_by_region(metrics_dict, output_dir, title="Error Metrics by Reg
         template="plotly_white"
     )
 
-    plot_path = os.path.join(output_dir, f"{title.lower().replace(' ', '-')}.html")
-    fig.write_html(plot_path)
-    print(f"[INFO] Saved plot with metrics on x-axis to {plot_path}")
-
     return fig
 
-def plot_regions_by_metrics(metrics_dict, output_dir, title="Region-Wise Metrics"):
+def plot_regions_by_metrics(metrics_dict, title="Region-Wise Metrics"):
     """
     Generate a static bar plot with regions (ROIs) on the x-axis and metrics as the legend.
 
@@ -75,8 +69,6 @@ def plot_regions_by_metrics(metrics_dict, output_dir, title="Region-Wise Metrics
     ----------
     metrics_dict : dict
         Dictionary of metrics for each ROI.
-    output_dir : str
-        Directory to save the generated plot.
     title : str, optional
         Title of the plot, by default "Region-Wise Metrics".
     """
@@ -110,13 +102,9 @@ def plot_regions_by_metrics(metrics_dict, output_dir, title="Region-Wise Metrics
         template="plotly_white"
     )
 
-    plot_path = os.path.join(output_dir, f"{title.lower().replace(' ', '-')}.html")
-    fig.write_html(plot_path)
-    print(f"[INFO] Saved plot with regions on x-axis to {plot_path}")
-
     return fig
 
-def plot_quality_measures_by_region(metrics_dict, output_dir, title="Quality Measures by Region"):
+def plot_quality_measures_by_region(metrics_dict, title="Quality Measures by Region"):
     """
     Generate a static bar plot with quality metrics on the x-axis and regions (ROIs) as the legend.
 
@@ -124,8 +112,6 @@ def plot_quality_measures_by_region(metrics_dict, output_dir, title="Quality Mea
     ----------
     metrics_dict : dict
         Dictionary of metrics for each ROI.
-    output_dir : str
-        Directory to save the generated plot.
     title : str, optional
         Title of the plot, by default "Quality Measures by Region".
     """
@@ -134,7 +120,7 @@ def plot_quality_measures_by_region(metrics_dict, output_dir, title="Quality Mea
     num_colors = len(roi_names)
 
     # if none of the measures are in the metrics_dict, return
-    if all([metric not in metrics_dict[roi_names[0]] for metric in quality_measures]):
+    if not any(metric in metrics_dict[roi] for roi in roi_names for metric in quality_measures):
         return
     
     # Generate distinct colors for each ROI
@@ -159,13 +145,9 @@ def plot_quality_measures_by_region(metrics_dict, output_dir, title="Quality Mea
         template="plotly_white"
     )
 
-    plot_path = os.path.join(output_dir, f"{title.lower().replace(' ', '-')}.html")
-    fig.write_html(plot_path)
-    print(f"[INFO] Saved plot with quality metrics on x-axis to {plot_path}")
-
     return fig
 
-def plot_regions_by_quality_measures(metrics_dict, output_dir, title="Region-Wise Quality Measures"):
+def plot_regions_by_quality_measures(metrics_dict, title="Region-Wise Quality Measures"):
     """
     Generate a static bar plot with regions (ROIs) on the x-axis and quality metrics as the legend.
 
@@ -173,8 +155,6 @@ def plot_regions_by_quality_measures(metrics_dict, output_dir, title="Region-Wis
     ----------
     metrics_dict : dict
         Dictionary of metrics for each ROI.
-    output_dir : str
-        Directory to save the generated plot.
     title : str, optional
         Title of the plot, by default "Region-Wise Quality Measures".
     """
@@ -208,13 +188,9 @@ def plot_regions_by_quality_measures(metrics_dict, output_dir, title="Region-Wis
         template="plotly_white"
     )
 
-    plot_path = os.path.join(output_dir, f"{title.lower().replace(' ', '-')}.html")
-    fig.write_html(plot_path)
-    print(f"[INFO] Saved plot with regions on x-axis to {plot_path}")
-
     return fig
 
-def plot_roi_statistics_boxplot(estimate, segmentation, labels, output_dir, title="Value Distributions by ROI",
+def plot_roi_statistics_boxplot(estimate, segmentation, labels, title="Value Distributions by ROI",
                                   sample_fraction=0.1, min_samples=100, max_samples=1000, small_roi_threshold=500,
                                   reference_values_json=None):
     """
@@ -229,8 +205,6 @@ def plot_roi_statistics_boxplot(estimate, segmentation, labels, output_dir, titl
         Segmentation mask where each distinct integer label corresponds to a different ROI.
     labels : dict
         A dictionary containing metrics for each ROI, used to extract labels.
-    output_dir : str
-        Directory to save the generated plots.
     sample_fraction : float, optional
         Fraction of the data to sample from each large ROI, default is 10%.
     min_samples : int, optional
@@ -308,11 +282,6 @@ def plot_roi_statistics_boxplot(estimate, segmentation, labels, output_dir, titl
         shapes=[dict(type="line", x0=0, x1=0, yref="paper", y0=0, y1=1, line=dict(color="red", dash="dash"))]
     )
 
-    # Save the plot to HTML
-    plot_path = os.path.join(output_dir, f"{title.lower().replace(' ', '-')}.html")
-    fig.write_html(plot_path)
-    print(f"[INFO] Saved interactive boxplot for voxel values by ROI to {plot_path}")
-
     return fig
 
 def encode_image_to_base64(image_path):
@@ -363,34 +332,35 @@ def get_nifti_metadata(nii_path):
 
 def sync_niivue(*instance_ids):
     if len(instance_ids) < 2:
-        return ""  # No sync needed if fewer than two instances
+        return ""
 
     sync_code = ""
     for i, id1 in enumerate(instance_ids):
         for id2 in instance_ids[i + 1:]:
+            sync_code += f'console.log("Syncing {id1} with {id2}");\n'
             sync_code += f'window.nvInstances["{id1}"].syncWith(window.nvInstances["{id2}"], {{ "3d": true, "2d": true }});\n'
     
     return sync_code
 
-def generate_niivue_html(nii_path, cal_range=(-0.1, 0.1), slider_range=(-1, 1), sync_id=None):
+def generate_niivue_html(nii_path, colormap="gray", cal_range=(-0.1, 0.1), slider_range=(-1, 1), max_width="1000px"):
     # Convert NIfTI to base64
     nifti_base64 = convert_nii_to_base64(nii_path)
     
     # Generate a unique ID
     unique_id = str(uuid.uuid4()).replace('-', '_')
 
-    sync_script = "" if sync_id is None else f"nv_{unique_id}.syncWith(nv_{sync_id}, {{ '3d': true, '2d': true }});"
-
     niivue_html = f"""
-    <div style="margin-top: 10px; text-align: center;">
-        <div id="calRangeSlider_{unique_id}" style="width: 100%; margin: 0 auto;"></div>
+    <div style="max-width: {max_width}; margin: 0 auto;">
+        <div style="margin-top: 10px; text-align: center;">
+            <div id="calRangeSlider_{unique_id}" style="width: 100%; margin: 0 auto;"></div>
+        </div>
+        <main id="container_{unique_id}" style="position: relative; width: 100%; padding-top: 40%; overflow: hidden;">
+            <canvas id="gl_{unique_id}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></canvas>
+        </main>
+        <footer id="intensity_{unique_id}" style="text-align: center; margin-top: 10px;">&nbsp;</footer>
     </div>
-    <main id="container_{unique_id}" style="position: relative; width: 100%; padding-top: 40%; overflow: hidden;">
-        <canvas id="gl_{unique_id}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></canvas>
-    </main>
-    <footer id="intensity_{unique_id}" style="text-align: center; margin-top: 10px;">&nbsp;</footer>
 
-    <script type="module" async>
+    <script type="module">
         import * as niivue from "https://niivue.github.io/niivue/dist/index.js";
 
         var nv_{unique_id} = new niivue.Niivue({{
@@ -405,7 +375,7 @@ def generate_niivue_html(nii_path, cal_range=(-0.1, 0.1), slider_range=(-1, 1), 
         let image_{unique_id} = niivue.NVImage.loadFromBase64({{
             base64: "{nifti_base64}",
             name: "{os.path.split(nii_path)[1]}",
-            colormap: "gray",
+            colormap: "{colormap}",
             opacity: 1.0,
             cal_min: {cal_range[0]},
             cal_max: {cal_range[1]},
@@ -416,8 +386,6 @@ def generate_niivue_html(nii_path, cal_range=(-0.1, 0.1), slider_range=(-1, 1), 
         nv_{unique_id}.opts.multiplanarShowRender = niivue.SHOW_RENDER.NEVER;
         nv_{unique_id}.opts.multiplanarLayout = niivue.MULTIPLANAR_TYPE.ROW;
         nv_{unique_id}.setInterpolation(true);
-
-        {sync_script}
 
         // Initialize noUiSlider for cal_min and cal_max
         noUiSlider.create(document.getElementById("calRangeSlider_{unique_id}"), {{
@@ -449,116 +417,6 @@ def generate_niivue_html(nii_path, cal_range=(-0.1, 0.1), slider_range=(-1, 1), 
     </script>
     """
     return niivue_html, unique_id
-
-def generate_index_html(output_dir, combined_metrics, figures_dict, qsm_estimate_file_path):
-    """
-    Generates an HTML file with all metrics, tables, embedded Plotly figures, and a NiiVue widget
-    to visualize the qsm_estimate_file using base64 encoding of voxel data.
-
-    Parameters
-    ----------
-    output_dir : str
-        Directory to save the generated HTML file.
-    combined_metrics : dict
-        Dictionary containing QSM and Fieldmap metrics.
-    figures_dict : dict
-        Dictionary with Plotly figures to embed in the HTML.
-    qsm_estimate_file_path : str
-        Path to the qsm_estimate file to visualize in NiiVue.
-    """
-
-    metrics_table_html = ""
-    for key, metrics_dict in combined_metrics.items():
-        metrics_table_html += f"<h2>{key} Metrics</h2>"
-        metrics_table_html += generate_html_table(metrics_dict)
-
-    figures_html = ""
-    for title, figure in figures_dict.items():
-        if figure is not None:
-            fig_html = to_html(figure, full_html=False)
-            figures_html += f"<h3>{title}</h3>{fig_html}"
-
-    # Generate Niivue viewers and get their unique IDs
-    qsm_view_html, qsm_id = generate_niivue_html(qsm_estimate_file_path)
-    fieldmap_view_html, fieldmap_id = generate_niivue_html(
-        '/home/ashley/repos/qsm-evaluation-brainlife/outputs/fieldmap_tissue_estimate.nii.gz',
-        cal_range=(-10, +10),
-        slider_range=(-20, 20)
-    )
-
-    # Generate synchronization code using `sync_niivue`
-    sync_code = sync_niivue(qsm_id, fieldmap_id)
-
-    html_content = f"""
-    <html>
-    <head>
-        <title>QSM Evaluation Results</title>
-        <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.11.5/css/jquery.dataTables.css">
-        <script type="text/javascript" src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-        <script type="text/javascript" src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
-        <link href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.6.3/nouislider.min.css" rel="stylesheet">
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.6.3/nouislider.min.js"></script>
-
-        <style>
-            body {{ font-family: Arial, sans-serif; }}
-            h1, h2, h3 {{ color: #333; }}
-            table {{ width: 100%; margin-top: 20px; border-collapse: collapse; }}
-            table, th, td {{ border: 1px solid #ddd; padding: 8px; }}
-            th {{ background-color: #f4f4f4; text-align: center; }}
-            .dataTables_wrapper .dataTables_filter input {{
-                margin-left: 0.5em;
-                width: 50%;
-            }}
-            .dataTables_wrapper .dataTables_paginate .paginate_button {{
-                color: white !important;
-                background-color: #333 !important;
-                border: none !important;
-            }}
-        </style>
-        <script>
-            $(document).ready(function() {{
-                $('table.display').DataTable({{
-                    "paging": true,
-                    "searching": true,
-                    "ordering": true,
-                    "info": false,
-                    "autoWidth": true,
-                    "pageLength": 10
-                }});
-            }});
-        </script>
-    </head>
-    <body>
-        <h1>QSM Evaluation Summary</h1>
-        {metrics_table_html}
-        <h2>Interactive Figures</h2>
-        {figures_html}
-        <h2>QSM Estimate Visualization</h2>
-        <div style="max-width: 900px; margin: 0 auto;">
-            {qsm_view_html}
-        </div>
-        <h2>Fieldmap Estimate Visualization</h2>
-        <div style="max-width: 900px; margin: 0 auto;">
-            {fieldmap_view_html}
-        </div>
-
-        <script type="module">
-            document.addEventListener("DOMContentLoaded", function() {{
-                // Ensure all instances are initialized before syncing
-                if (window.nvInstances) {{
-                    {sync_code}
-                }}
-            }});
-        </script>
-    </body>
-    </html>
-    """
-
-    index_html_path = os.path.join(output_dir, "index.html")
-    with open(index_html_path, "w") as html_file:
-        html_file.write(html_content)
-
-    print(f"[INFO] index.html with embedded Plotly figures, DataTables, and NiiVue generated at {index_html_path}")
 
 def generate_html_table(metrics_dict):
     """
@@ -648,6 +506,64 @@ def calculate_snr_for_rois(gre_magnitude: np.ndarray, segmentation: np.ndarray) 
 
     return snr_dict
 
+def generate_html_content(body, sync_code=""):
+    return f"""
+    <html>
+    <head>
+        <title>QSM Evaluation Results</title>
+        <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.11.5/css/jquery.dataTables.css">
+        <script type="text/javascript" src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+        <script type="text/javascript" src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.6.3/nouislider.min.css" rel="stylesheet">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.6.3/nouislider.min.js"></script>
+
+        <style>
+            body {{ font-family: Arial, sans-serif; }}
+            h1, h2, h3 {{ color: #333; }}
+            table {{ width: 100%; margin-top: 20px; border-collapse: collapse; }}
+            table, th, td {{ border: 1px solid #ddd; padding: 8px; }}
+            th {{ background-color: #f4f4f4; text-align: center; }}
+            .dataTables_wrapper .dataTables_filter input {{
+                margin-left: 0.5em;
+                width: 50%;
+            }}
+            .dataTables_wrapper .dataTables_paginate .paginate_button {{
+                color: white !important;
+                background-color: #333 !important;
+                border: none !important;
+            }}
+        </style>
+        <script>
+            $(document).ready(function() {{
+                $('table.display').DataTable({{
+                    "paging": true,
+                    "searching": true,
+                    "ordering": true,
+                    "info": false,
+                    "autoWidth": true,
+                    "pageLength": 10
+                }});
+            }});
+        </script>
+    </head>
+    <body>
+        {body}
+
+        <script type="module">
+            document.addEventListener("DOMContentLoaded", function() {{
+                // Ensure all instances are initialized before syncing
+                setTimeout(() => {{
+                    if (window.nvInstances) {{
+                        {sync_code}
+                    }}
+                }}, 500);  // Delay by 500 ms
+            }});
+        </script>
+    </body>
+    </html>
+    """
+
+
 if __name__ == "__main__":
     # Load inputs from config.json
     print("[INFO] Loading configuration...")
@@ -685,8 +601,6 @@ if __name__ == "__main__":
 
     # Load segmentation
     segmentation_file = config_json.get('parc', None)
-    segmentation_nii = None
-    segmentation_np = None
     if segmentation_file:
         print("[INFO] Loading segmentation...")
         segmentation_nii = nib.load(segmentation_file)
@@ -694,18 +608,22 @@ if __name__ == "__main__":
 
     # Load segmentation labels
     labels_file = config_json.get('label', None)
-    labels = None
     if labels_file:
         print("[INFO] Loading segmentation labels...")
         with open(labels_file, 'r') as labels_fh:
             label_data = json.load(labels_fh)
         labels = {item['voxel_value']: item['name'] for item in label_data}
         labels[-1] = "Mask"
+    else:
+        labels = {}
+        for roi_id in np.unique(segmentation_np):
+            labels[roi_id] = f"ROI {roi_id}"
+    ids = {}
+    for roi_id, roi_name in labels.items():
+        ids[roi_name] = roi_id
 
     # Load mask
     mask_file = config_json.get('qsm_mask', None)
-    mask_nii = None
-    mask_np = None
     if mask_file:
         print("[INFO] Loading QSM mask...")
         mask_nii = nib.load(mask_file)
@@ -723,8 +641,26 @@ if __name__ == "__main__":
         magnitude_nii = nib.load(magnitude_file)
         magnitude_np = magnitude_nii.get_fdata()
 
-        air_mask = eval.create_air_mask(magnitude_np)
+    # Load QSM ground truth
+    qsm_groundtruth_file = config_json.get('qsm_groundtruth', None)
+    qsm_groundtruth_np = None
+    qsm_metrics_error = {}
+    if qsm_groundtruth_file:
+        print("[INFO] Loading QSM ground truth...")
+        qsm_groundtruth_nii = nib.load(qsm_groundtruth_file)
+        qsm_groundtruth_np = qsm_groundtruth_nii.get_fdata()
 
+    # Load tissue fieldmap
+    fieldmap_gt_file = config_json.get('fieldmap_tissue', None)
+    if fieldmap_gt_file:
+        print("[INFO] Loading tissue fieldmap...")
+        fieldmap_tissue_nii = nib.load(fieldmap_gt_file)
+        fieldmap_gt_np = fieldmap_tissue_nii.get_fdata()
+
+    # Calculate all metrics
+    if magnitude_file:
+        print("[INFO] Calculating SNR metrics...")
+        air_mask = eval.create_air_mask(magnitude_np)
         nib.save(
             img=nib.Nifti1Image(
                 dataobj=air_mask,
@@ -738,123 +674,158 @@ if __name__ == "__main__":
             metrics_snr = eval.calculate_snr_for_rois(magnitude_np, segmentation_np, air_mask)
         else:
             metrics_snr = eval.calculate_snr(magnitude_np, mask_np, air_mask)
+        
+        if labels_file: metrics_snr = { labels.get(roi_id, f"ROI {roi_id}"): snr for roi_id, snr in metrics_snr.items() }
 
-        # Map SNR values to ROI labels
-        if labels:
-            metrics_snr = { labels.get(roi_id, f"ROI {roi_id}"): snr for roi_id, snr in metrics_snr.items() }
-
-        with open(os.path.join(output_dir, 'snr.json'), 'w') as json_file:
-            json_file.write(json.dumps(metrics_snr, indent=4))
-
-    # Load QSM ground truth
-    qsm_groundtruth_file = config_json.get('qsm_groundtruth', None)
-    qsm_groundtruth_np = None
-    qsm_metrics_error = {}
+    # Generate metrics for QSM
     if qsm_groundtruth_file:
-        print("[INFO] Loading QSM ground truth...")
-        qsm_groundtruth_nii = nib.load(qsm_groundtruth_file)
-        qsm_groundtruth_np = qsm_groundtruth_nii.get_fdata()
-
-        # calculate absolute error
-        qsm_error_np = np.abs(qsm_groundtruth_np - qsm_estimate_np)
+        print("[INFO] Calculating metrics on QSM error map...")
         qsm_metrics_error = eval.all_metrics(
-            pred_data=qsm_error_np,
+            pred_data=np.abs(qsm_groundtruth_np - qsm_estimate_np),
             segmentation=segmentation_np,
             mask=mask_np,
             quality_metrics=False
         )
-        if labels: qsm_metrics_error = { labels.get(roi_id, f"ROI {roi_id}"): metrics for roi_id, metrics in qsm_metrics_error.items() }
-
-        nib.save(
-            img=nib.Nifti1Image(
-                dataobj=qsm_error_np,
-                affine=qsm_estimate_nii.affine,
-                header=qsm_estimate_nii.header
-            ),
-            filename=os.path.join(output_dir, "qsm_error.nii.gz")
-        )
-
-    # Calculate metrics
-    print("[INFO] Computing evaluation metrics on QSM...")
+        if labels_file: qsm_metrics_error = { labels.get(roi_id, f"ROI {roi_id}"): metrics for roi_id, metrics in qsm_metrics_error.items() }
+    print("[INFO] Calculating QSM metrics...")
     qsm_metrics = eval.all_metrics(
         pred_data=qsm_estimate_np,
         segmentation=segmentation_np,
         mask=mask_np,
+        quality_metrics=False,
         ref_data=qsm_groundtruth_np
     )
-    if labels: qsm_metrics = { labels.get(roi_id, f"ROI {roi_id}"): metrics for roi_id, metrics in qsm_metrics.items() }
-    eval.save_as_csv(qsm_metrics, os.path.join(output_dir, "qsm_metrics.csv"))
+    if labels_file: qsm_metrics = { labels.get(roi_id, f"ROI {roi_id}"): metrics for roi_id, metrics in qsm_metrics.items() }
 
-    # Load tissue fieldmap
-    fieldmap_tissue_file = config_json.get('fieldmap_tissue', None)
-    fieldmap_metrics = {}
-    fieldmap_metrics_error = {}
-    if fieldmap_tissue_file:
-        print("[INFO] Loading tissue fieldmap...")
-        fieldmap_tissue_nii = nib.load(fieldmap_tissue_file)
-        fieldmap_tissue_np = fieldmap_tissue_nii.get_fdata()
-
-        fieldmap_tissue_estimate_np = B0 * 42.576 * qsm_forward.generate_field(
+    if fieldmap_gt_file:
+        print("[INFO] Generating fieldmap estimate...")
+        fieldmap_estimate_np = B0 * 42.576 * qsm_forward.generate_field(
             chi=qsm_estimate_np,
             voxel_size=voxel_size,
             B0_dir=B0_dir
         )
-        nib.save(
-            img=nib.Nifti1Image(
-                dataobj=fieldmap_tissue_estimate_np,
-                affine=qsm_estimate_nii.affine,
-                header=qsm_estimate_nii.header
-            ),
-            filename=os.path.join(output_dir, "fieldmap_tissue_estimate.nii.gz")
-        )
-
-        print("[INFO] Computing evaluation metrics on fieldmap...")
+        print("[INFO] Calculating fieldmap metrics...")
         fieldmap_metrics = eval.all_metrics(
-            pred_data=fieldmap_tissue_estimate_np,
+            pred_data=fieldmap_estimate_np,
             segmentation=segmentation_np,
             mask=mask_np,
-            ref_data=fieldmap_tissue_np
+            ref_data=fieldmap_gt_np
         )
-        if labels: fieldmap_metrics = { labels.get(roi_id, f"ROI {roi_id}"): metrics for roi_id, metrics in fieldmap_metrics.items() }
-        eval.save_as_csv(fieldmap_metrics, os.path.join(output_dir, "fieldmap_metrics.csv"))
+        if labels_file: fieldmap_metrics = { labels.get(roi_id, f"ROI {roi_id}"): metrics for roi_id, metrics in fieldmap_metrics.items() }
 
-        # calculate absolute error
-        fieldmap_tissue_error_np = np.abs(fieldmap_tissue_np - fieldmap_tissue_estimate_np)
-        nib.save(
-            img=nib.Nifti1Image(
-                dataobj=fieldmap_tissue_error_np,
-                affine=qsm_estimate_nii.affine,
-                header=qsm_estimate_nii.header
-            ),
-            filename=os.path.join(output_dir, "fieldmap_tissue_error.nii.gz")
-        )
+        print("[INFO] Calculating metrics on fieldmap error map...")
         fieldmap_metrics_error = eval.all_metrics(
-            pred_data=fieldmap_tissue_error_np,
+            pred_data=np.abs(fieldmap_gt_np - fieldmap_estimate_np),
             segmentation=segmentation_np,
             mask=mask_np,
             quality_metrics=False
         )
-        if labels: fieldmap_metrics_error = { labels.get(roi_id, f"ROI {roi_id}"): metrics for roi_id, metrics in fieldmap_metrics_error.items() }
+        if labels_file: fieldmap_metrics_error = { labels.get(roi_id, f"ROI {roi_id}"): metrics for roi_id, metrics in fieldmap_metrics_error.items() }
+
+    # Saving outputs
+    print("[INFO] Saving outputs...")
+    if fieldmap_gt_file:
+        print("[INFO] Saving fieldmap estimate...")
+        fieldmap_estimate_file = os.path.join(output_dir, "fieldmap_estimate.nii.gz")
+        nib.save(
+            img=nib.Nifti1Image(
+                dataobj=fieldmap_estimate_np,
+                affine=qsm_estimate_nii.affine,
+                header=qsm_estimate_nii.header
+            ),
+            filename=fieldmap_estimate_file
+        )
+        fieldmap_error_file = os.path.join(output_dir, "fieldmap_error.nii.gz")
+        nib.save(
+            img=nib.Nifti1Image(
+                dataobj=fieldmap_estimate_np - fieldmap_gt_np,
+                affine=qsm_estimate_nii.affine,
+                header=qsm_estimate_nii.header
+            ),
+            filename=fieldmap_error_file
+        )
+        eval.save_as_csv(fieldmap_metrics, os.path.join(output_dir, "fieldmap_metrics.csv"))
         eval.save_as_csv(fieldmap_metrics_error, os.path.join(output_dir, "fieldmap_metrics_error.csv"))
 
-    # Generate and save figures
-    print("[INFO] Generating figures...")
-    figures_dict = {}
-    for metrics_dict, data, name, reference_values_json in [
-        (qsm_metrics, qsm_estimate_np, "QSM values (ppm)", 'literature-qsm-values.json'),
-        (qsm_metrics_error, qsm_error_np, "QSM errors (ppm)", None),
-        (fieldmap_metrics, fieldmap_tissue_estimate_np, "Field variations (Hz)", None),
-        (fieldmap_metrics_error, fieldmap_tissue_error_np, "Fieldmap errors (Hz)", None)
-    ]:
-        figures_dict[f"{name} - error measures by region"] = plot_metrics_by_region(metrics_dict, output_dir, title=f"{name} - error measures by region")
-        figures_dict[f"{name} - error measures by metric"] = plot_regions_by_metrics(metrics_dict, output_dir, title=f"{name} - error measures by metric")
-        if segmentation_np is not None:
-            figures_dict[f"{name} by ROI"] = plot_roi_statistics_boxplot(data, segmentation_np, labels, output_dir, title=f"{name} by ROI", reference_values_json=reference_values_json)
-        figures_dict[f"{name} - quality measures by region"] = plot_quality_measures_by_region(metrics_dict, output_dir, title=f"{name} - quality measures by region")
-        figures_dict[f"{name} - quality measures by measure"] = plot_regions_by_quality_measures(metrics_dict, output_dir, title=f"{name} - quality measures by measure")
+    if qsm_groundtruth_file:
+        print("[INFO] Saving QSM error map...")
+        qsm_error_file = os.path.join(output_dir, "qsm_error.nii.gz")
+        nib.save(
+            img=nib.Nifti1Image(
+                dataobj=np.abs(qsm_groundtruth_np - qsm_estimate_np),
+                affine=qsm_estimate_nii.affine,
+                header=qsm_estimate_nii.header
+            ),
+            filename=qsm_error_file
+        )
+        eval.save_as_csv(qsm_metrics_error, os.path.join(output_dir, "qsm_metrics_error.csv"))
+    eval.save_as_csv(qsm_metrics, os.path.join(output_dir, "qsm_metrics.csv"))
+
+    if magnitude_file:
+        print("[INFO] Saving SNR metrics...")
+        with open(os.path.join(output_dir, 'snr.json'), 'w') as json_file:
+            json_file.write(json.dumps(metrics_snr, indent=4))
+
+        # generate SNR NIfTI file with the SNR value substituted in for each ROI
+        if segmentation_file:
+            snr_img = np.zeros_like(segmentation_np)
+            for roi_name, snr in metrics_snr.items():
+                snr_img[segmentation_np == ids[roi_name]] = snr
+            snr_file = os.path.join(output_dir, "snr.nii.gz")
+            nib.save(
+                img=nib.Nifti1Image(
+                    dataobj=snr_img,
+                    affine=segmentation_nii.affine,
+                    header=segmentation_nii.header
+                ),
+                filename=snr_file
+            )
 
     # Generate index.html with all images, metrics, and embedded figures
-    generate_index_html(output_dir, {'QSM': qsm_metrics, 'Fieldmap': fieldmap_metrics}, figures_dict, qsm_estimate_file)
+    print("[INFO] Generating index.html...")
+    html_body = ""
+
+    qsm_niivue_html, qsm_niivue_id = generate_niivue_html(qsm_estimate_file)
+    html_body += f"<h2>QSM Estimate Visualization</h2>{qsm_niivue_html}"
+    if qsm_groundtruth_file is not None:
+        qsm_groundtruth_niivue_html, qsm_groundtruth_niivue_id = generate_niivue_html(qsm_groundtruth_file)
+        html_body += f"<h2>QSM Ground Truth</h2>{qsm_groundtruth_niivue_html}"
+        qsm_error_niivue_html, qsm_error_niivue_id = generate_niivue_html(qsm_error_file, colormap="jet", cal_range=(0, 0.2), slider_range=(0, 3))
+        html_body += f"<h2>QSM Error Visualization</h2>{qsm_error_niivue_html}"
+    html_body += f"<h2>QSM Metrics</h2>{generate_html_table(qsm_metrics)}"
+    html_body += f"<h2>QSM Values across ROIs</h2>{plot_roi_statistics_boxplot(qsm_estimate_np, segmentation_np, labels, title='QSM Values across ROIs', reference_values_json='literature-qsm-values.json').to_html()}"
+    #html_body += f"<h2>QSM Metrics by Region</h2>{plot_metrics_by_region(qsm_metrics, title='QSM Metrics by Region').to_html()}"
+    #html_body += f"<h2>QSM Metrics</h2>{plot_regions_by_metrics(qsm_metrics, title='QSM Metrics by Region').to_html()}"
+    #html_body += f"<h2>QSM Quality Measures by Region</h2>{plot_quality_measures_by_region(qsm_metrics, title='QSM Quality Measures by Region').to_html()}"
+    #html_body += f"<h2>QSM Quality Measures by Measure</h2>{plot_regions_by_quality_measures(qsm_metrics, title='QSM Quality Measures by Measure').to_html()}"
+
+    if magnitude_file:
+        snr_niivue_html, snr_niivue_id = generate_niivue_html(snr_file, cal_range=(0, 300), slider_range=(0, 500))
+        html_body += f"<h2>SNR Visualization</h2>{snr_niivue_html}"
+
+    if fieldmap_gt_file:
+        fieldmap_niivue_html, fieldmap_niivue_id = generate_niivue_html(fieldmap_gt_file, cal_range=(-10, +10), slider_range=(-20, +20))
+        html_body += f"<h2>Fieldmap Visualization</h2>{fieldmap_niivue_html}"
+        fieldmap_tissue_estimate_html, fieldmap_tissue_estimate_niivue_id = generate_niivue_html(fieldmap_estimate_file, cal_range=(-10, +10), slider_range=(-20, +20))
+        html_body += f"<h2>Fieldmap Estimate Visualization</h2>{fieldmap_tissue_estimate_html}"
+        html_body += f"<h2>Fieldmap Metrics</h2>{generate_html_table(fieldmap_metrics)}"
+        html_body += f"<h2>Fieldmap Values across ROIs</h2>{plot_roi_statistics_boxplot(fieldmap_estimate_np, segmentation_np, labels, title='Fieldmap Values across ROIs').to_html()}"
+        html_body += f"<h2>Fieldmap Errors across ROIs</h2>{plot_roi_statistics_boxplot(abs(fieldmap_estimate_np - fieldmap_gt_np), segmentation_np, labels, title='Fieldmap Errors across ROIs').to_html()}"
+        #html_body += f"<h2>Fieldmap Metrics by Region</h2>{plot_metrics_by_region(fieldmap_metrics, title='Fieldmap Metrics by Region').to_html()}"
+        #html_body += f"<h2>Fieldmap Metrics</h2>{plot_regions_by_metrics(fieldmap_metrics, title='Fieldmap Metrics by Region').to_html()}"
+        #html_body += f"<h2>Fieldmap Quality Measures by Region</h2>{plot_quality_measures_by_region(fieldmap_metrics, title='Fieldmap Quality Measures by Region').to_html()}"
+        #html_body += f"<h2>Fieldmap Quality Measures by Measure</h2>{plot_regions_by_quality_measures(fieldmap_metrics, title='Fieldmap Quality Measures by Measure').to_html()}"
+
+    sync_code = ""
+    if qsm_groundtruth_file is not None:
+        sync_code += sync_niivue(qsm_niivue_id, qsm_groundtruth_niivue_id)
+        sync_code += sync_niivue(qsm_groundtruth_niivue_id, qsm_error_niivue_id)
+    if fieldmap_gt_file:
+        sync_code += sync_niivue(fieldmap_niivue_id, fieldmap_tissue_estimate_niivue_id)
+
+    full_html = generate_html_content(html_body, sync_code)
+    with open(os.path.join(output_dir, "index.html"), "w") as html_file:
+        html_file.write(full_html)
 
     print("[INFO] Done!")
 
