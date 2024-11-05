@@ -345,9 +345,26 @@ def create_json_for_brainlife(encoded_images):
     }
     return json.dumps(data, indent=4)
 
-def generate_index_html(output_dir, combined_metrics, figures_dict):
+def convert_nii_to_base64(nii_path):
+    """Convert a NIfTI file to a base64 string."""
+    with open(nii_path, "rb") as file:
+        encoded_string = base64.b64encode(file.read()).decode("utf-8").replace('\n', '')
+    return encoded_string
+
+def get_nifti_metadata(nii_path):
+    """Extract metadata from a NIfTI file."""
+    img = nib.load(nii_path)
+    dims = img.header['dim'][1:4].tolist()  # Dimensions (x, y, z)
+    pixDims = img.header['pixdim'][1:4].tolist()  # Voxel sizes
+    affine = img.affine.flatten().tolist()  # Affine transformation matrix, flattened
+    datatypeCode = img.header['datatype']  # Data type code
+    return dims, pixDims, affine, datatypeCode
+
+
+def generate_index_html(output_dir, combined_metrics, figures_dict, qsm_estimate_file_path):
     """
-    Generates an HTML file with all metrics, tables, and embedded Plotly figures with DataTables integration.
+    Generates an HTML file with all metrics, tables, embedded Plotly figures, and a NiiVue widget
+    to visualize the qsm_estimate_file using base64 encoding of voxel data.
 
     Parameters
     ----------
@@ -357,27 +374,83 @@ def generate_index_html(output_dir, combined_metrics, figures_dict):
         Dictionary containing QSM and Fieldmap metrics.
     figures_dict : dict
         Dictionary with Plotly figures to embed in the HTML.
+    qsm_estimate_file_path : str
+        Path to the qsm_estimate file to visualize in NiiVue.
     """
 
-    # Generate the HTML table for the metrics with DataTables integration
+    # Step 1: Encode the entire NIfTI file to base64
+    nifti_base64 = convert_nii_to_base64(qsm_estimate_file_path)
+    if nifti_base64 is None:
+        print("Failed to encode NIfTI file. Exiting.")
+        return
+
+    # Step 2: Generate HTML table for metrics
     metrics_table_html = ""
     for key, metrics_dict in combined_metrics.items():
         metrics_table_html += f"<h2>{key} Metrics</h2>"
         metrics_table_html += generate_html_table(metrics_dict)
 
-    # Convert Plotly figures to HTML divs and append to HTML content
+    # Step 3: Embed Plotly figures into HTML
     figures_html = ""
     for title, figure in figures_dict.items():
         if figure is not None:
-            fig_html = to_html(figure, full_html=False)  # Converts figure to HTML div
+            fig_html = to_html(figure, full_html=False)
             figures_html += f"<h3>{title}</h3>{fig_html}"
 
-    # Create the index.html content with embedded figures and DataTables styling
+    # Step 4: Create NiiVue HTML for visualizing the qsm_estimate_file
+    niivue_html = f"""
+    <h2>QSM Estimate Visualization</h2>
+    <header>
+        <select id="sliceType">
+            <option value="0">Axial</option>
+            <option value="1">Coronal</option>
+            <option value="2">Sagittal</option>
+            <option value="4">Render</option>
+            <option value="3" selected>A+C+S+R</option>
+        </select>
+    </header>
+    <main id="container">
+        <canvas id="gl1"></canvas>
+    </main>
+    <footer id="intensity">&nbsp;</footer>
+    <script type="module" async>
+        import * as niivue from "https://niivue.github.io/niivue/dist/index.js";
+
+        var nv1 = new niivue.Niivue({{
+            dragAndDropEnabled: true,
+            onLocationChange: function(data) {{
+                document.getElementById("intensity").innerHTML = "&nbsp;&nbsp;" + data.string;
+            }}
+        }});
+        nv1.attachTo("gl1");
+
+        // Change slice type based on dropdown selection
+        document.getElementById("sliceType").onchange = function () {{
+            let st = parseInt(document.getElementById("sliceType").value);
+            nv1.setSliceType(st);
+        }};
+
+        // Load base64-encoded NIfTI image into NVImage
+        let image = niivue.NVImage.loadFromBase64({{
+            base64: "{nifti_base64}",
+            name: "{os.path.split(qsm_estimate_file_path)[1]}",
+            colormap: "gray",
+            opacity: 1.0,
+            cal_min: -0.1,
+            cal_max: +0.1,
+        }});
+
+        nv1.addVolume(image);
+        nv1.setSliceType(nv1.sliceTypeMultiplanar);
+        nv1.setInterpolation(true);
+    </script>
+    """
+
+    # Step 5: Combine everything into the final HTML content
     html_content = f"""
     <html>
     <head>
         <title>QSM Evaluation Results</title>
-        <!-- DataTables CSS and JavaScript -->
         <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.11.5/css/jquery.dataTables.css">
         <script type="text/javascript" src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
         <script type="text/javascript" src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
@@ -398,7 +471,6 @@ def generate_index_html(output_dir, combined_metrics, figures_dict):
             }}
         </style>
         <script>
-            // Initialize DataTables for interactive sorting and filtering
             $(document).ready(function() {{
                 $('table.display').DataTable({{
                     "paging": true,
@@ -416,16 +488,17 @@ def generate_index_html(output_dir, combined_metrics, figures_dict):
         {metrics_table_html}
         <h2>Interactive Figures</h2>
         {figures_html}
+        {niivue_html}
     </body>
     </html>
     """
 
-    # Write the HTML to index.html in the output directory
+    # Step 6: Save the generated HTML to the output directory
     index_html_path = os.path.join(output_dir, "index.html")
     with open(index_html_path, "w") as html_file:
         html_file.write(html_content)
     
-    print(f"[INFO] index.html with embedded Plotly figures and DataTables generated at {index_html_path}")
+    print(f"[INFO] index.html with embedded Plotly figures, DataTables, and NiiVue generated at {index_html_path}")
 
 def generate_html_table(metrics_dict):
     """
@@ -721,7 +794,7 @@ if __name__ == "__main__":
         figures_dict[f"{name} - quality measures by measure"] = plot_regions_by_quality_measures(metrics_dict, output_dir, title=f"{name} - quality measures by measure")
 
     # Generate index.html with all images, metrics, and embedded figures
-    generate_index_html(output_dir, {'QSM': qsm_metrics, 'Fieldmap': fieldmap_metrics}, figures_dict)
+    generate_index_html(output_dir, {'QSM': qsm_metrics, 'Fieldmap': fieldmap_metrics}, figures_dict, qsm_estimate_file)
 
     print("[INFO] Done!")
 
