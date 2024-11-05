@@ -643,8 +643,6 @@ if __name__ == "__main__":
 
     # Load QSM ground truth
     qsm_groundtruth_file = config_json.get('qsm_groundtruth', None)
-    qsm_groundtruth_np = None
-    qsm_metrics_error = {}
     if qsm_groundtruth_file:
         print("[INFO] Loading QSM ground truth...")
         qsm_groundtruth_nii = nib.load(qsm_groundtruth_file)
@@ -656,6 +654,13 @@ if __name__ == "__main__":
         print("[INFO] Loading tissue fieldmap...")
         fieldmap_tissue_nii = nib.load(fieldmap_gt_file)
         fieldmap_gt_np = fieldmap_tissue_nii.get_fdata()
+
+    # Load phase quality map
+    phase_quality_file = config_json.get('phase_quality', None)
+    if phase_quality_file:
+        print("[INFO] Loading phase quality map...")
+        phase_quality_nii = nib.load(phase_quality_file)
+        phase_quality_np = phase_quality_nii.get_fdata()
 
     # Calculate all metrics
     if magnitude_file:
@@ -721,6 +726,16 @@ if __name__ == "__main__":
             quality_metrics=False
         )
         if labels_file: fieldmap_metrics_error = { labels.get(roi_id, f"ROI {roi_id}"): metrics for roi_id, metrics in fieldmap_metrics_error.items() }
+
+    if phase_quality_file:
+        print("[INFO] Calculating metrics on phase quality map...")
+        phase_quality_metrics = eval.all_metrics(
+            pred_data=phase_quality_np,
+            segmentation=segmentation_np,
+            mask=mask_np,
+            quality_metrics=False
+        )
+        if labels_file: phase_quality_metrics = { labels.get(roi_id, f"ROI {roi_id}"): metrics for roi_id, metrics in phase_quality_metrics.items() }
 
     # Saving outputs
     print("[INFO] Saving outputs...")
@@ -792,29 +807,42 @@ if __name__ == "__main__":
         html_body += f"<h2>QSM Ground Truth</h2>{qsm_groundtruth_niivue_html}"
         qsm_error_niivue_html, qsm_error_niivue_id = generate_niivue_html(qsm_error_file, colormap="jet", cal_range=(0, 0.2), slider_range=(0, 3))
         html_body += f"<h2>QSM Error Visualization</h2>{qsm_error_niivue_html}"
+    if phase_quality_file:
+        phase_quality_niivue_html, phase_quality_niivue_id = generate_niivue_html(phase_quality_file, cal_range=(0, 1), slider_range=(0, 1))
+        html_body += f"<h2>Phase Quality Visualization</h2>{phase_quality_niivue_html}"
+    if magnitude_file:
+        snr_niivue_html, snr_niivue_id = generate_niivue_html(snr_file, cal_range=(0, 300), slider_range=(0, 500))
+        html_body += f"<h2>SNR Visualization</h2>{snr_niivue_html}"
     html_body += f"<h2>QSM Metrics</h2>{generate_html_table(qsm_metrics)}"
+    if phase_quality_file:
+        html_body += f"<h2>Phase Quality Metrics</h2>{generate_html_table(phase_quality_metrics)}"
+    if fieldmap_gt_file:
+        html_body += f"<h2>Fieldmap Metrics</h2>{generate_html_table(fieldmap_metrics)}"
+    if fieldmap_gt_file:
+        fieldmap_niivue_html, fieldmap_niivue_id = generate_niivue_html(fieldmap_gt_file, cal_range=(-10, +10), slider_range=(-20, +20))
+        html_body += f"<h2>Fieldmap (forward from QSM) Visualization</h2>{fieldmap_niivue_html}"
+        fieldmap_tissue_estimate_html, fieldmap_tissue_estimate_niivue_id = generate_niivue_html(fieldmap_estimate_file, cal_range=(-10, +10), slider_range=(-20, +20))
+        html_body += f"<h2>Fieldmap (ROMEO + V-SHARP) Visualization</h2>{fieldmap_tissue_estimate_html}"
+        fieldmap_error_niivue_html, fieldmap_error_niivue_id = generate_niivue_html(fieldmap_error_file, colormap="jet", cal_range=(0, 10), slider_range=(0, 20))
+        html_body += f"<h2>Fieldmap Error Visualization</h2>{fieldmap_error_niivue_html}"
+
     html_body += f"<h2>QSM Values across ROIs</h2>{plot_roi_statistics_boxplot(qsm_estimate_np, segmentation_np, labels, title='QSM Values across ROIs', reference_values_json='literature-qsm-values.json').to_html()}"
-    #html_body += f"<h2>QSM Metrics by Region</h2>{plot_metrics_by_region(qsm_metrics, title='QSM Metrics by Region').to_html()}"
+
+    if fieldmap_gt_file:
+        #html_body += f"<h2>Fieldmap Values across ROIs</h2>{plot_roi_statistics_boxplot(fieldmap_estimate_np, segmentation_np, labels, title='Fieldmap Values across ROIs').to_html()}"
+        html_body += f"<h2>Fieldmap Errors across ROIs</h2>{plot_roi_statistics_boxplot(abs(fieldmap_estimate_np - fieldmap_gt_np), segmentation_np, labels, title='Fieldmap Errors across ROIs').to_html()}"
+    
+    html_body += f"<h2>QSM Metrics by Region</h2>{plot_metrics_by_region(qsm_metrics, title='QSM Metrics by Region').to_html()}"
     #html_body += f"<h2>QSM Metrics</h2>{plot_regions_by_metrics(qsm_metrics, title='QSM Metrics by Region').to_html()}"
     #html_body += f"<h2>QSM Quality Measures by Region</h2>{plot_quality_measures_by_region(qsm_metrics, title='QSM Quality Measures by Region').to_html()}"
     #html_body += f"<h2>QSM Quality Measures by Measure</h2>{plot_regions_by_quality_measures(qsm_metrics, title='QSM Quality Measures by Measure').to_html()}"
 
-    if magnitude_file:
-        snr_niivue_html, snr_niivue_id = generate_niivue_html(snr_file, cal_range=(0, 300), slider_range=(0, 500))
-        html_body += f"<h2>SNR Visualization</h2>{snr_niivue_html}"
-
     if fieldmap_gt_file:
-        fieldmap_niivue_html, fieldmap_niivue_id = generate_niivue_html(fieldmap_gt_file, cal_range=(-10, +10), slider_range=(-20, +20))
-        html_body += f"<h2>Fieldmap Visualization</h2>{fieldmap_niivue_html}"
-        fieldmap_tissue_estimate_html, fieldmap_tissue_estimate_niivue_id = generate_niivue_html(fieldmap_estimate_file, cal_range=(-10, +10), slider_range=(-20, +20))
-        html_body += f"<h2>Fieldmap Estimate Visualization</h2>{fieldmap_tissue_estimate_html}"
-        html_body += f"<h2>Fieldmap Metrics</h2>{generate_html_table(fieldmap_metrics)}"
-        html_body += f"<h2>Fieldmap Values across ROIs</h2>{plot_roi_statistics_boxplot(fieldmap_estimate_np, segmentation_np, labels, title='Fieldmap Values across ROIs').to_html()}"
-        html_body += f"<h2>Fieldmap Errors across ROIs</h2>{plot_roi_statistics_boxplot(abs(fieldmap_estimate_np - fieldmap_gt_np), segmentation_np, labels, title='Fieldmap Errors across ROIs').to_html()}"
-        #html_body += f"<h2>Fieldmap Metrics by Region</h2>{plot_metrics_by_region(fieldmap_metrics, title='Fieldmap Metrics by Region').to_html()}"
+        html_body += f"<h2>Fieldmap Metrics by Region</h2>{plot_metrics_by_region(fieldmap_metrics, title='Fieldmap Metrics by Region').to_html()}"
         #html_body += f"<h2>Fieldmap Metrics</h2>{plot_regions_by_metrics(fieldmap_metrics, title='Fieldmap Metrics by Region').to_html()}"
         #html_body += f"<h2>Fieldmap Quality Measures by Region</h2>{plot_quality_measures_by_region(fieldmap_metrics, title='Fieldmap Quality Measures by Region').to_html()}"
         #html_body += f"<h2>Fieldmap Quality Measures by Measure</h2>{plot_regions_by_quality_measures(fieldmap_metrics, title='Fieldmap Quality Measures by Measure').to_html()}"
+
 
     sync_code = ""
     if qsm_groundtruth_file is not None:
