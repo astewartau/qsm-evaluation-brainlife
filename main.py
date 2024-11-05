@@ -3,6 +3,7 @@
 import os
 import json
 import base64
+import uuid
 
 import nibabel as nib
 import numpy as np
@@ -360,6 +361,94 @@ def get_nifti_metadata(nii_path):
     datatypeCode = img.header['datatype']  # Data type code
     return dims, pixDims, affine, datatypeCode
 
+def sync_niivue(*instance_ids):
+    if len(instance_ids) < 2:
+        return ""  # No sync needed if fewer than two instances
+
+    sync_code = ""
+    for i, id1 in enumerate(instance_ids):
+        for id2 in instance_ids[i + 1:]:
+            sync_code += f'window.nvInstances["{id1}"].syncWith(window.nvInstances["{id2}"], {{ "3d": true, "2d": true }});\n'
+    
+    return sync_code
+
+def generate_niivue_html(nii_path, cal_range=(-0.1, 0.1), slider_range=(-1, 1), sync_id=None):
+    # Convert NIfTI to base64
+    nifti_base64 = convert_nii_to_base64(nii_path)
+    
+    # Generate a unique ID
+    unique_id = str(uuid.uuid4()).replace('-', '_')
+
+    sync_script = "" if sync_id is None else f"nv_{unique_id}.syncWith(nv_{sync_id}, {{ '3d': true, '2d': true }});"
+
+    niivue_html = f"""
+    <div style="margin-top: 10px; text-align: center;">
+        <div id="calRangeSlider_{unique_id}" style="width: 100%; margin: 0 auto;"></div>
+    </div>
+    <main id="container_{unique_id}" style="position: relative; width: 100%; padding-top: 40%; overflow: hidden;">
+        <canvas id="gl_{unique_id}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></canvas>
+    </main>
+    <footer id="intensity_{unique_id}" style="text-align: center; margin-top: 10px;">&nbsp;</footer>
+
+    <script type="module" async>
+        import * as niivue from "https://niivue.github.io/niivue/dist/index.js";
+
+        var nv_{unique_id} = new niivue.Niivue({{
+            dragAndDropEnabled: true,
+            onLocationChange: function(data) {{
+                document.getElementById("intensity_{unique_id}").innerHTML = "&nbsp;&nbsp;" + data.string;
+            }}
+        }});
+        nv_{unique_id}.attachTo("gl_{unique_id}");
+
+        // Load base64-encoded NIfTI image into NVImage
+        let image_{unique_id} = niivue.NVImage.loadFromBase64({{
+            base64: "{nifti_base64}",
+            name: "{os.path.split(nii_path)[1]}",
+            colormap: "gray",
+            opacity: 1.0,
+            cal_min: {cal_range[0]},
+            cal_max: {cal_range[1]},
+        }});
+
+        nv_{unique_id}.addVolume(image_{unique_id});
+        nv_{unique_id}.setSliceType(nv_{unique_id}.sliceTypeMultiplanar);
+        nv_{unique_id}.opts.multiplanarShowRender = niivue.SHOW_RENDER.NEVER;
+        nv_{unique_id}.opts.multiplanarLayout = niivue.MULTIPLANAR_TYPE.ROW;
+        nv_{unique_id}.setInterpolation(true);
+
+        {sync_script}
+
+        // Initialize noUiSlider for cal_min and cal_max
+        noUiSlider.create(document.getElementById("calRangeSlider_{unique_id}"), {{
+            start: [{cal_range[0]}, {cal_range[1]}],
+            connect: true,
+            range: {{
+                'min': {slider_range[0]},
+                'max': {slider_range[1]}
+            }},
+            step: 0.01,
+            tooltips: [true, true],
+            format: {{
+                to: value => value.toFixed(2),
+                from: value => parseFloat(value)
+            }}
+        }});
+
+        // Update cal_min and cal_max dynamically with noUiSlider
+        document.getElementById("calRangeSlider_{unique_id}").noUiSlider.on("update", function(values, handle) {{
+            let calMin = parseFloat(values[0]);
+            let calMax = parseFloat(values[1]);
+            nv_{unique_id}.volumes[0].cal_min = calMin;
+            nv_{unique_id}.volumes[0].cal_max = calMax;
+            nv_{unique_id}.updateGLVolume();
+        }});
+
+        window.nvInstances = window.nvInstances || {{}};
+        window.nvInstances["{unique_id}"] = nv_{unique_id};
+    </script>
+    """
+    return niivue_html, unique_id
 
 def generate_index_html(output_dir, combined_metrics, figures_dict, qsm_estimate_file_path):
     """
@@ -378,75 +467,28 @@ def generate_index_html(output_dir, combined_metrics, figures_dict, qsm_estimate
         Path to the qsm_estimate file to visualize in NiiVue.
     """
 
-    # Step 1: Encode the entire NIfTI file to base64
-    nifti_base64 = convert_nii_to_base64(qsm_estimate_file_path)
-    if nifti_base64 is None:
-        print("Failed to encode NIfTI file. Exiting.")
-        return
-
-    # Step 2: Generate HTML table for metrics
     metrics_table_html = ""
     for key, metrics_dict in combined_metrics.items():
         metrics_table_html += f"<h2>{key} Metrics</h2>"
         metrics_table_html += generate_html_table(metrics_dict)
 
-    # Step 3: Embed Plotly figures into HTML
     figures_html = ""
     for title, figure in figures_dict.items():
         if figure is not None:
             fig_html = to_html(figure, full_html=False)
             figures_html += f"<h3>{title}</h3>{fig_html}"
 
-    # Step 4: Create NiiVue HTML for visualizing the qsm_estimate_file
-    niivue_html = f"""
-    <h2>QSM Estimate Visualization</h2>
-    <header>
-        <select id="sliceType">
-            <option value="0">Axial</option>
-            <option value="1">Coronal</option>
-            <option value="2">Sagittal</option>
-            <option value="4">Render</option>
-            <option value="3" selected>A+C+S+R</option>
-        </select>
-    </header>
-    <main id="container">
-        <canvas id="gl1"></canvas>
-    </main>
-    <footer id="intensity">&nbsp;</footer>
-    <script type="module" async>
-        import * as niivue from "https://niivue.github.io/niivue/dist/index.js";
+    # Generate Niivue viewers and get their unique IDs
+    qsm_view_html, qsm_id = generate_niivue_html(qsm_estimate_file_path)
+    fieldmap_view_html, fieldmap_id = generate_niivue_html(
+        '/home/ashley/repos/qsm-evaluation-brainlife/outputs/fieldmap_tissue_estimate.nii.gz',
+        cal_range=(-10, +10),
+        slider_range=(-20, 20)
+    )
 
-        var nv1 = new niivue.Niivue({{
-            dragAndDropEnabled: true,
-            onLocationChange: function(data) {{
-                document.getElementById("intensity").innerHTML = "&nbsp;&nbsp;" + data.string;
-            }}
-        }});
-        nv1.attachTo("gl1");
+    # Generate synchronization code using `sync_niivue`
+    sync_code = sync_niivue(qsm_id, fieldmap_id)
 
-        // Change slice type based on dropdown selection
-        document.getElementById("sliceType").onchange = function () {{
-            let st = parseInt(document.getElementById("sliceType").value);
-            nv1.setSliceType(st);
-        }};
-
-        // Load base64-encoded NIfTI image into NVImage
-        let image = niivue.NVImage.loadFromBase64({{
-            base64: "{nifti_base64}",
-            name: "{os.path.split(qsm_estimate_file_path)[1]}",
-            colormap: "gray",
-            opacity: 1.0,
-            cal_min: -0.1,
-            cal_max: +0.1,
-        }});
-
-        nv1.addVolume(image);
-        nv1.setSliceType(nv1.sliceTypeMultiplanar);
-        nv1.setInterpolation(true);
-    </script>
-    """
-
-    # Step 5: Combine everything into the final HTML content
     html_content = f"""
     <html>
     <head>
@@ -454,6 +496,9 @@ def generate_index_html(output_dir, combined_metrics, figures_dict, qsm_estimate
         <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.11.5/css/jquery.dataTables.css">
         <script type="text/javascript" src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
         <script type="text/javascript" src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.6.3/nouislider.min.css" rel="stylesheet">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.6.3/nouislider.min.js"></script>
+
         <style>
             body {{ font-family: Arial, sans-serif; }}
             h1, h2, h3 {{ color: #333; }}
@@ -488,16 +533,31 @@ def generate_index_html(output_dir, combined_metrics, figures_dict, qsm_estimate
         {metrics_table_html}
         <h2>Interactive Figures</h2>
         {figures_html}
-        {niivue_html}
+        <h2>QSM Estimate Visualization</h2>
+        <div style="max-width: 900px; margin: 0 auto;">
+            {qsm_view_html}
+        </div>
+        <h2>Fieldmap Estimate Visualization</h2>
+        <div style="max-width: 900px; margin: 0 auto;">
+            {fieldmap_view_html}
+        </div>
+
+        <script type="module">
+            document.addEventListener("DOMContentLoaded", function() {{
+                // Ensure all instances are initialized before syncing
+                if (window.nvInstances) {{
+                    {sync_code}
+                }}
+            }});
+        </script>
     </body>
     </html>
     """
 
-    # Step 6: Save the generated HTML to the output directory
     index_html_path = os.path.join(output_dir, "index.html")
     with open(index_html_path, "w") as html_file:
         html_file.write(html_content)
-    
+
     print(f"[INFO] index.html with embedded Plotly figures, DataTables, and NiiVue generated at {index_html_path}")
 
 def generate_html_table(metrics_dict):
