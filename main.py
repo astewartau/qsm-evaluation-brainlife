@@ -1,18 +1,21 @@
 #!/usr/bin/env python
 
 import os
-import plotly.graph_objects as go
-from plotly.colors import n_colors
-import plotly.express as px
 import json
 import base64
+
 import nibabel as nib
 import numpy as np
 import qsm_forward
 import eval
 import numpy as np
+
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.colors import n_colors
+from plotly.io import to_html
+
 from skimage.filters import threshold_otsu
-from skimage.morphology import erosion, cube
 
 def plot_metrics_by_region(metrics_dict, output_dir, title="Error Metrics by Region"):
     """
@@ -61,6 +64,8 @@ def plot_metrics_by_region(metrics_dict, output_dir, title="Error Metrics by Reg
     fig.write_html(plot_path)
     print(f"[INFO] Saved plot with metrics on x-axis to {plot_path}")
 
+    return fig
+
 def plot_regions_by_metrics(metrics_dict, output_dir, title="Region-Wise Metrics"):
     """
     Generate a static bar plot with regions (ROIs) on the x-axis and metrics as the legend.
@@ -107,6 +112,8 @@ def plot_regions_by_metrics(metrics_dict, output_dir, title="Region-Wise Metrics
     plot_path = os.path.join(output_dir, f"{title.lower().replace(' ', '-')}.html")
     fig.write_html(plot_path)
     print(f"[INFO] Saved plot with regions on x-axis to {plot_path}")
+
+    return fig
 
 def plot_quality_measures_by_region(metrics_dict, output_dir, title="Quality Measures by Region"):
     """
@@ -155,6 +162,8 @@ def plot_quality_measures_by_region(metrics_dict, output_dir, title="Quality Mea
     fig.write_html(plot_path)
     print(f"[INFO] Saved plot with quality metrics on x-axis to {plot_path}")
 
+    return fig
+
 def plot_regions_by_quality_measures(metrics_dict, output_dir, title="Region-Wise Quality Measures"):
     """
     Generate a static bar plot with regions (ROIs) on the x-axis and quality metrics as the legend.
@@ -202,7 +211,9 @@ def plot_regions_by_quality_measures(metrics_dict, output_dir, title="Region-Wis
     fig.write_html(plot_path)
     print(f"[INFO] Saved plot with regions on x-axis to {plot_path}")
 
-def plotly_roi_statistics_boxplot(estimate, segmentation, labels, output_dir, title="Value Distributions by ROI",
+    return fig
+
+def plot_roi_statistics_boxplot(estimate, segmentation, labels, output_dir, title="Value Distributions by ROI",
                                   sample_fraction=0.1, min_samples=100, max_samples=1000, small_roi_threshold=500,
                                   reference_values_json=None):
     """
@@ -290,7 +301,7 @@ def plotly_roi_statistics_boxplot(estimate, segmentation, labels, output_dir, ti
 
     # Update layout for readability
     fig.update_layout(
-        yaxis_tickangle=-45,
+        yaxis_tickangle=0,
         template="plotly_white",
         legend_title_text="Legend",
         shapes=[dict(type="line", x0=0, x1=0, yref="paper", y0=0, y1=1, line=dict(color="red", dash="dash"))]
@@ -300,6 +311,8 @@ def plotly_roi_statistics_boxplot(estimate, segmentation, labels, output_dir, ti
     plot_path = os.path.join(output_dir, f"{title.lower().replace(' ', '-')}.html")
     fig.write_html(plot_path)
     print(f"[INFO] Saved interactive boxplot for voxel values by ROI to {plot_path}")
+
+    return fig
 
 def encode_image_to_base64(image_path):
     with open(image_path, "rb") as image_file:
@@ -332,10 +345,92 @@ def create_json_for_brainlife(encoded_images):
     }
     return json.dumps(data, indent=4)
 
+def generate_index_html(output_dir, combined_metrics, figures_dict):
+    """
+    Generates an HTML file with all metrics, tables, and embedded Plotly figures with DataTables integration.
+
+    Parameters
+    ----------
+    output_dir : str
+        Directory to save the generated HTML file.
+    combined_metrics : dict
+        Dictionary containing QSM and Fieldmap metrics.
+    figures_dict : dict
+        Dictionary with Plotly figures to embed in the HTML.
+    """
+
+    # Generate the HTML table for the metrics with DataTables integration
+    metrics_table_html = ""
+    for key, metrics_dict in combined_metrics.items():
+        metrics_table_html += f"<h2>{key} Metrics</h2>"
+        metrics_table_html += generate_html_table(metrics_dict)
+
+    # Convert Plotly figures to HTML divs and append to HTML content
+    figures_html = ""
+    for title, figure in figures_dict.items():
+        if figure is not None:
+            fig_html = to_html(figure, full_html=False)  # Converts figure to HTML div
+            figures_html += f"<h3>{title}</h3>{fig_html}"
+
+    # Create the index.html content with embedded figures and DataTables styling
+    html_content = f"""
+    <html>
+    <head>
+        <title>QSM Evaluation Results</title>
+        <!-- DataTables CSS and JavaScript -->
+        <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.11.5/css/jquery.dataTables.css">
+        <script type="text/javascript" src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+        <script type="text/javascript" src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+        <style>
+            body {{ font-family: Arial, sans-serif; }}
+            h1, h2, h3 {{ color: #333; }}
+            table {{ width: 100%; margin-top: 20px; border-collapse: collapse; }}
+            table, th, td {{ border: 1px solid #ddd; padding: 8px; }}
+            th {{ background-color: #f4f4f4; text-align: center; }}
+            .dataTables_wrapper .dataTables_filter input {{
+                margin-left: 0.5em;
+                width: 50%;
+            }}
+            .dataTables_wrapper .dataTables_paginate .paginate_button {{
+                color: white !important;
+                background-color: #333 !important;
+                border: none !important;
+            }}
+        </style>
+        <script>
+            // Initialize DataTables for interactive sorting and filtering
+            $(document).ready(function() {{
+                $('table.display').DataTable({{
+                    "paging": true,
+                    "searching": true,
+                    "ordering": true,
+                    "info": false,
+                    "autoWidth": true,
+                    "pageLength": 10
+                }});
+            }});
+        </script>
+    </head>
+    <body>
+        <h1>QSM Evaluation Summary</h1>
+        {metrics_table_html}
+        <h2>Interactive Figures</h2>
+        {figures_html}
+    </body>
+    </html>
+    """
+
+    # Write the HTML to index.html in the output directory
+    index_html_path = os.path.join(output_dir, "index.html")
+    with open(index_html_path, "w") as html_file:
+        html_file.write(html_content)
+    
+    print(f"[INFO] index.html with embedded Plotly figures and DataTables generated at {index_html_path}")
+
 def generate_html_table(metrics_dict):
     """
     Generate an HTML table with each row representing an ROI and each column representing a metric,
-    ordered by priority.
+    ordered by priority, and DataTables ready.
 
     Parameters
     ----------
@@ -364,8 +459,8 @@ def generate_html_table(metrics_dict):
     remaining_metrics = sorted(set(all_metrics) - set(ordered_metrics))
     all_metrics = ordered_metrics + remaining_metrics
 
-    # Start creating the table HTML with headers
-    html = "<table border='1' cellpadding='5'>"
+    # Start creating the table HTML with DataTables class for enhanced features
+    html = "<table class='display' border='1' cellpadding='5'>"
     html += "<thead><tr><th>Region</th>" + "".join(f"<th>{metric}</th>" for metric in all_metrics) + "</tr></thead>"
 
     # Add a row for each ROI
@@ -387,35 +482,6 @@ def generate_html_table(metrics_dict):
     html += "</tbody></table>"
 
     return html
-
-def generate_index_html(output_dir, combined_metrics):
-    """
-    Generates an HTML file with all metrics and images.
-    """
-
-    # Generate the HTML table for the metrics
-    metrics_table_html = ""
-    for key, metrics_dict in combined_metrics.items():
-        metrics_table_html += f"<h2>{key}</h2>"
-        metrics_table_html += generate_html_table(metrics_dict)
-
-    # Create the index.html content
-    html_content = f"""
-    <html>
-    <head><title>QSM Evaluation Results</title></head>
-    <body>
-    <h1>QSM Evaluation Metrics</h1>
-    {metrics_table_html}
-    </body>
-    </html>
-    """
-
-    # Write the HTML to index.html in the output directory
-    index_html_path = os.path.join(output_dir, "index.html")
-    with open(index_html_path, "w") as html_file:
-        html_file.write(html_content)
-    
-    print(f"[INFO] index.html generated at {index_html_path}")
 
 def calculate_snr_for_rois(gre_magnitude: np.ndarray, segmentation: np.ndarray) -> dict:
     """
@@ -535,7 +601,6 @@ if __name__ == "__main__":
             filename=os.path.join(output_dir, "air_mask.nii.gz")
         )
 
-        # evaluate SNR
         if segmentation_file:
             metrics_snr = eval.calculate_snr_for_rois(magnitude_np, segmentation_np, air_mask)
         else:
@@ -550,8 +615,8 @@ if __name__ == "__main__":
 
     # Load QSM ground truth
     qsm_groundtruth_file = config_json.get('qsm_groundtruth', None)
-    qsm_groundtruth_nii = None
     qsm_groundtruth_np = None
+    qsm_metrics_error = {}
     if qsm_groundtruth_file:
         print("[INFO] Loading QSM ground truth...")
         qsm_groundtruth_nii = nib.load(qsm_groundtruth_file)
@@ -589,6 +654,8 @@ if __name__ == "__main__":
 
     # Load tissue fieldmap
     fieldmap_tissue_file = config_json.get('fieldmap_tissue', None)
+    fieldmap_metrics = {}
+    fieldmap_metrics_error = {}
     if fieldmap_tissue_file:
         print("[INFO] Loading tissue fieldmap...")
         fieldmap_tissue_nii = nib.load(fieldmap_tissue_file)
@@ -596,8 +663,8 @@ if __name__ == "__main__":
 
         fieldmap_tissue_estimate_np = B0 * 42.576 * qsm_forward.generate_field(
             chi=qsm_estimate_np,
-            voxel_size=qsm_estimate_nii.header.get_zooms()[:3],
-            B0_dir=B0_dir,
+            voxel_size=voxel_size,
+            B0_dir=B0_dir
         )
         nib.save(
             img=nib.Nifti1Image(
@@ -639,64 +706,22 @@ if __name__ == "__main__":
 
     # Generate and save figures
     print("[INFO] Generating figures...")
-
-    html_dir = os.path.join(output_dir, 'html')
+    figures_dict = {}
     for metrics_dict, data, name, reference_values_json in [
         (qsm_metrics, qsm_estimate_np, "QSM values (ppm)", 'literature-qsm-values.json'),
         (qsm_metrics_error, qsm_error_np, "QSM errors (ppm)", None),
         (fieldmap_metrics, fieldmap_tissue_estimate_np, "Field variations (Hz)", None),
         (fieldmap_metrics_error, fieldmap_tissue_error_np, "Fieldmap errors (Hz)", None)
     ]:
-        os.makedirs(html_dir, exist_ok=True)
-        plot_metrics_by_region(
-            metrics_dict,
-            html_dir,
-            title=f"{name} - error measures by region"
-        )
-        plot_regions_by_metrics(
-            metrics_dict,
-            html_dir,
-            title=f"{name} - error measures by metric"
-        )
+        figures_dict[f"{name} - error measures by region"] = plot_metrics_by_region(metrics_dict, output_dir, title=f"{name} - error measures by region")
+        figures_dict[f"{name} - error measures by metric"] = plot_regions_by_metrics(metrics_dict, output_dir, title=f"{name} - error measures by metric")
         if segmentation_np is not None:
-            plotly_roi_statistics_boxplot(
-                data,
-                segmentation_np,
-                labels,
-                html_dir,
-                title=f"{name} by ROI",
-                reference_values_json=reference_values_json
-            )
-        plot_quality_measures_by_region(
-            metrics_dict,
-            html_dir,
-            title=f"{name} - quality measures by region"
-        )
-        plot_regions_by_quality_measures(
-            metrics_dict,
-            html_dir,
-            title=f"{name} - quality measures by measure"
-        )
+            figures_dict[f"{name} by ROI"] = plot_roi_statistics_boxplot(data, segmentation_np, labels, output_dir, title=f"{name} by ROI", reference_values_json=reference_values_json)
+        figures_dict[f"{name} - quality measures by region"] = plot_quality_measures_by_region(metrics_dict, output_dir, title=f"{name} - quality measures by region")
+        figures_dict[f"{name} - quality measures by measure"] = plot_regions_by_quality_measures(metrics_dict, output_dir, title=f"{name} - quality measures by measure")
 
-    # Collect all PNG files in plot_dir
-    png_paths = [os.path.join(html_dir, f) for f in os.listdir(html_dir) if f.endswith('.png')]
-
-    # Convert each PNG file to base64
-    encoded_images = []
-    for png_path in png_paths:
-        print(f"[INFO] Converting {png_path} to base64...")
-        encoded_image = encode_image_to_base64(png_path)
-        encoded_images.append({"name": os.path.basename(png_path), "base64": encoded_image})
-
-    # Generate product.json with all base64 images
-    if encoded_images:
-        print("[INFO] Generating product.json...")
-        json_data = create_json_for_brainlife(encoded_images)
-        with open('product.json', 'w') as json_file:
-            json_file.write(json_data)
-
-    # Generate index.html with all images and table
-    generate_index_html(html_dir, { 'QSM': qsm_metrics, 'Fieldmap': fieldmap_metrics })
+    # Generate index.html with all images, metrics, and embedded figures
+    generate_index_html(output_dir, {'QSM': qsm_metrics, 'Fieldmap': fieldmap_metrics}, figures_dict)
 
     print("[INFO] Done!")
 
