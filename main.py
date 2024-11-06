@@ -649,14 +649,14 @@ if __name__ == "__main__":
         qsm_groundtruth_np = qsm_groundtruth_nii.get_fdata()
 
     # Load tissue fieldmap
-    fieldmap_gt_file = config_json.get('fieldmap_tissue', None)
+    fieldmap_gt_file = config_json.get('fieldmap', None)
     if fieldmap_gt_file:
         print("[INFO] Loading tissue fieldmap...")
         fieldmap_tissue_nii = nib.load(fieldmap_gt_file)
         fieldmap_gt_np = fieldmap_tissue_nii.get_fdata()
 
     # Load phase quality map
-    phase_quality_file = config_json.get('phase_quality', None)
+    phase_quality_file = os.path.join(config_json.get('phase_quality', None), 'phase-quality.nii.gz')
     if phase_quality_file:
         print("[INFO] Loading phase quality map...")
         phase_quality_nii = nib.load(phase_quality_file)
