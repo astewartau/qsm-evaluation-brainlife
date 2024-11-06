@@ -330,34 +330,52 @@ def get_nifti_metadata(nii_path):
     datatypeCode = img.header['datatype']  # Data type code
     return dims, pixDims, affine, datatypeCode
 
-def sync_niivue(*instance_ids):
-    if len(instance_ids) < 2:
-        return ""
+def generate_sync_code(viewer_ids):
+    """
+    Generates JavaScript code to set up bidirectional synchronization between NiiVue viewers.
 
+    Parameters
+    ----------
+    viewer_ids : list of str
+        List of unique IDs for the NiiVue viewers to synchronize.
+
+    Returns
+    -------
+    str
+        JavaScript code for setting up synchronization.
+    """
     sync_code = ""
-    for i, id1 in enumerate(instance_ids):
-        for id2 in instance_ids[i + 1:]:
+    for i, id1 in enumerate(viewer_ids):
+        for id2 in viewer_ids[i + 1:]:
             sync_code += f'console.log("Syncing {id1} with {id2}");\n'
             sync_code += f'window.nvInstances["{id1}"].syncWith(window.nvInstances["{id2}"], {{ "3d": true, "2d": true }});\n'
-    
-    return sync_code
 
-def generate_niivue_html(nii_path, colormap="gray", cal_range=(-0.1, 0.1), slider_range=(-1, 1), max_width="1000px"):
+    broadcast_code = ""
+    for source_id in viewer_ids:
+        target_ids = [f'window.nvInstances["{vid}"]' for vid in viewer_ids if vid != source_id]
+        broadcast_code += f'window.nvInstances["{source_id}"].broadcastTo([{", ".join(target_ids)}], {{ "3d": true, "2d": true }});\n'
+
+    return broadcast_code
+
+def generate_niivue_html(nii_path, colormap="gray", cal_range=(-0.1, 0.1), slider_range=None):
+    # Set slider range if not provided
+    if slider_range is None:
+        img_data = nib.load(nii_path).get_fdata()
+        slider_range = (float(np.min(img_data)), float(np.max(img_data)))
+    
     # Convert NIfTI to base64
     nifti_base64 = convert_nii_to_base64(nii_path)
-    
+
     # Generate a unique ID
     unique_id = str(uuid.uuid4()).replace('-', '_')
 
     niivue_html = f"""
-    <div style="max-width: {max_width}; margin: 0 auto;">
-        <div style="margin-top: 10px; text-align: center;">
-            <div id="calRangeSlider_{unique_id}" style="width: 100%; margin: 0 auto;"></div>
+    <div id="{unique_id}" style="position: relative; max-width: 800px; width: 100%; height: auto; margin: 0 auto;">
+        <div style="position: relative; width: 100%; height: 0; padding-bottom: 50%;"> <!-- 16:9 aspect ratio padding -->
+            <canvas id="{unique_id}_canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></canvas>
         </div>
-        <main id="container_{unique_id}" style="position: relative; width: 100%; padding-top: 40%; overflow: hidden;">
-            <canvas id="gl_{unique_id}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></canvas>
-        </main>
-        <footer id="intensity_{unique_id}" style="text-align: center; margin-top: 10px;">&nbsp;</footer>
+        <div id="calRangeSlider_{unique_id}" style="width: 80%; margin: 10px auto;"></div>
+        <footer id="{unique_id}_intensity" style="text-align: center; margin-top: 10px;">&nbsp;</footer>
     </div>
 
     <script type="module">
@@ -366,15 +384,15 @@ def generate_niivue_html(nii_path, colormap="gray", cal_range=(-0.1, 0.1), slide
         var nv_{unique_id} = new niivue.Niivue({{
             dragAndDropEnabled: true,
             onLocationChange: function(data) {{
-                document.getElementById("intensity_{unique_id}").innerHTML = "&nbsp;&nbsp;" + data.string;
+                document.getElementById("{unique_id}_intensity").innerHTML = "&nbsp;&nbsp;" + data.string;
             }}
         }});
-        nv_{unique_id}.attachTo("gl_{unique_id}");
+        nv_{unique_id}.attachTo("{unique_id}_canvas");
 
         // Load base64-encoded NIfTI image into NVImage
         let image_{unique_id} = niivue.NVImage.loadFromBase64({{
             base64: "{nifti_base64}",
-            name: "{os.path.split(nii_path)[1]}",
+            name: "{os.path.basename(nii_path)}",
             colormap: "{colormap}",
             opacity: 1.0,
             cal_min: {cal_range[0]},
@@ -417,6 +435,183 @@ def generate_niivue_html(nii_path, colormap="gray", cal_range=(-0.1, 0.1), slide
     </script>
     """
     return niivue_html, unique_id
+
+def generate_niivue_overlay_html(nifti_path1, nifti_path2, cal_range1=(-0.1, 0.1), cal_range2=(-0.1, 0.1), 
+                                 slider_range1=None, slider_range2=None, colormap1="gray", colormap2="gray"):
+    """
+    Generates HTML for a NiiVue viewer with two overlaid images and sliders for contrast adjustment 
+    and opacity for the overlay image.
+
+    Parameters
+    ----------
+    nifti_path1 : str
+        Path to the base NIfTI file.
+    nifti_path2 : str
+        Path to the overlay NIfTI file.
+    cal_range1 : tuple of (float, float), optional
+        Default contrast range (cal_min, cal_max) for the base image.
+    cal_range2 : tuple of (float, float), optional
+        Default contrast range (cal_min, cal_max) for the overlay image.
+    slider_range1 : tuple of (float, float), optional
+        Range for the base image's contrast slider. If None, it uses the image data range.
+    slider_range2 : tuple of (float, float), optional
+        Range for the overlay image's contrast slider. If None, it uses the image data range.
+    colormap1 : str, optional
+        Colormap for the base image, by default "gray".
+    colormap2 : str, optional
+        Colormap for the overlay image, by default "gray".
+
+    Returns
+    -------
+    tuple
+        HTML string for embedding the NiiVue viewer with overlay functionality and a unique ID.
+    """
+    # Set slider ranges based on image data if not provided
+    if slider_range1 is None:
+        img_data1 = nib.load(nifti_path1).get_fdata()
+        slider_range1 = (float(np.min(img_data1)), float(np.max(img_data1)))
+    if slider_range2 is None:
+        img_data2 = nib.load(nifti_path2).get_fdata()
+        slider_range2 = (float(np.min(img_data2)), float(np.max(img_data2)))
+
+    # Convert NIfTI files to base64
+    nifti_base64_1 = convert_nii_to_base64(nifti_path1)
+    nifti_base64_2 = convert_nii_to_base64(nifti_path2)
+
+    # Generate a unique ID
+    unique_id = str(uuid.uuid4()).replace('-', '_')
+
+    # HTML content for NiiVue viewer with overlay and sliders
+    html_content = f"""
+    <div id="{unique_id}" style="position: relative; max-width: 800px; width: 100%; height: auto; margin: 0 auto;">
+        <div style="position: relative; width: 100%; height: 0; padding-bottom: 50%;"> <!-- 16:9 aspect ratio padding -->
+            <canvas id="{unique_id}_canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></canvas>
+        </div>
+        <div id="calRangeSlider1_{unique_id}" style="width: 80%; margin: 10px auto;"></div>
+        <div id="calRangeSlider2_{unique_id}" style="width: 80%; margin: 10px auto;"></div>
+        <div id="{unique_id}_opacity_slider" style="width: 80%; margin: 10px auto;"></div>
+        <footer id="{unique_id}_intensity" style="text-align: center; margin-top: 10px;">&nbsp;</footer>
+    </div>
+
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.6.3/nouislider.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.6.3/nouislider.min.js"></script>
+
+    <script type="module" async>
+        import * as niivue from "https://niivue.github.io/niivue/dist/index.js";
+
+        var nv_{unique_id} = new niivue.Niivue({{
+            dragAndDropEnabled: true,
+            onLocationChange: function(data) {{
+                document.getElementById("{unique_id}_intensity").innerHTML = "&nbsp;&nbsp;" + data.string;
+            }}
+        }});
+        nv_{unique_id}.attachTo("{unique_id}_canvas");
+
+        // Load base64-encoded NIfTI images into NVImage objects for overlay
+        let baseImage = niivue.NVImage.loadFromBase64({{
+            base64: "{nifti_base64_1}",
+            name: "{os.path.basename(nifti_path1)}",
+            colormap: "{colormap1}",
+            opacity: 1.0,
+            cal_min: {cal_range1[0]},
+            cal_max: {cal_range1[1]},
+        }});
+        
+        let overlayImage = niivue.NVImage.loadFromBase64({{
+            base64: "{nifti_base64_2}",
+            name: "{os.path.basename(nifti_path2)}",
+            colormap: "{colormap2}",
+            opacity: 0.0,  // Start with overlay hidden
+            cal_min: {cal_range2[0]},
+            cal_max: {cal_range2[1]},
+        }});
+
+        nv_{unique_id}.addVolume(baseImage);
+        nv_{unique_id}.addVolume(overlayImage);
+        nv_{unique_id}.setSliceType(nv_{unique_id}.sliceTypeMultiplanar);
+        nv_{unique_id}.opts.multiplanarShowRender = niivue.SHOW_RENDER.NEVER;
+        nv_{unique_id}.opts.multiplanarLayout = niivue.MULTIPLANAR_TYPE.ROW;
+        nv_{unique_id}.setInterpolation(true);
+
+        // Initialize noUiSlider for base image cal_min and cal_max
+        noUiSlider.create(document.getElementById("calRangeSlider1_{unique_id}"), {{
+            start: [{cal_range1[0]}, {cal_range1[1]}],
+            connect: true,
+            range: {{
+                'min': {slider_range1[0]},
+                'max': {slider_range1[1]}
+            }},
+            step: 0.01,
+            tooltips: [true, true],
+            format: {{
+                to: value => value.toFixed(2),
+                from: value => parseFloat(value)
+            }}
+        }});
+
+        // Update cal_min and cal_max for the base image with slider
+        document.getElementById("calRangeSlider1_{unique_id}").noUiSlider.on("update", function(values, handle) {{
+            let calMin = parseFloat(values[0]);
+            let calMax = parseFloat(values[1]);
+            nv_{unique_id}.volumes[0].cal_min = calMin;
+            nv_{unique_id}.volumes[0].cal_max = calMax;
+            nv_{unique_id}.updateGLVolume();
+        }});
+
+        // Initialize noUiSlider for overlay image cal_min and cal_max
+        noUiSlider.create(document.getElementById("calRangeSlider2_{unique_id}"), {{
+            start: [{cal_range2[0]}, {cal_range2[1]}],
+            connect: true,
+            range: {{
+                'min': {slider_range2[0]},
+                'max': {slider_range2[1]}
+            }},
+            step: 0.01,
+            tooltips: [true, true],
+            format: {{
+                to: value => value.toFixed(2),
+                from: value => parseFloat(value)
+            }}
+        }});
+
+        // Update cal_min and cal_max for the overlay image with slider
+        document.getElementById("calRangeSlider2_{unique_id}").noUiSlider.on("update", function(values, handle) {{
+            let calMin = parseFloat(values[0]);
+            let calMax = parseFloat(values[1]);
+            nv_{unique_id}.volumes[1].cal_min = calMin;
+            nv_{unique_id}.volumes[1].cal_max = calMax;
+            nv_{unique_id}.updateGLVolume();
+        }});
+
+        // Initialize noUiSlider for overlay opacity
+        noUiSlider.create(document.getElementById("{unique_id}_opacity_slider"), {{
+            start: [0.0],  // Initial opacity
+            connect: [true, false],
+            range: {{
+                'min': 0,
+                'max': 1
+            }},
+            step: 0.01,
+            tooltips: true,
+            format: {{
+                to: value => value.toFixed(2),
+                from: value => parseFloat(value)
+            }}
+        }});
+
+        // Update overlay opacity dynamically with noUiSlider
+        document.getElementById("{unique_id}_opacity_slider").noUiSlider.on("update", function(values) {{
+            let overlayOpacity = parseFloat(values[0]);
+            nv_{unique_id}.volumes[1].opacity = overlayOpacity;  // Adjust the opacity of the overlay
+            nv_{unique_id}.updateGLVolume();
+        }});
+
+        // Register instance globally for optional syncing
+        window.nvInstances = window.nvInstances || {{}};
+        window.nvInstances["{unique_id}"] = nv_{unique_id};
+    </script>
+    """
+    return html_content, unique_id
 
 def generate_html_table(metrics_dict):
     """
@@ -551,12 +746,11 @@ def generate_html_content(body, sync_code=""):
 
         <script type="module">
             document.addEventListener("DOMContentLoaded", function() {{
-                // Ensure all instances are initialized before syncing
                 setTimeout(() => {{
                     if (window.nvInstances) {{
                         {sync_code}
                     }}
-                }}, 500);  // Delay by 500 ms
+                }}, 500);  // Delay to ensure all instances are initialized
             }});
         </script>
     </body>
@@ -632,7 +826,7 @@ if __name__ == "__main__":
         mask_np = np.array(segmentation_np != 0, dtype=int)
     else:
         mask_np = np.array(qsm_estimate_np != 0, dtype=int)
-    mask_np[mask_np != 0] = -1
+    mask_np[mask_np != 0] = 1
 
     # Load magnitude image
     magnitude_file = config_json.get('magnitude', None)
@@ -648,12 +842,12 @@ if __name__ == "__main__":
         qsm_groundtruth_nii = nib.load(qsm_groundtruth_file)
         qsm_groundtruth_np = qsm_groundtruth_nii.get_fdata()
 
-    # Load tissue fieldmap
+    # Load fieldmap
     fieldmap_gt_file = config_json.get('fieldmap', None)
     if fieldmap_gt_file:
-        print("[INFO] Loading tissue fieldmap...")
-        fieldmap_tissue_nii = nib.load(fieldmap_gt_file)
-        fieldmap_gt_np = fieldmap_tissue_nii.get_fdata()
+        print("[INFO] Loading fieldmap...")
+        fieldmap_gt_nii = nib.load(fieldmap_gt_file)
+        fieldmap_gt_np = fieldmap_gt_nii.get_fdata()
 
     # Load phase quality map
     phase_quality_file = os.path.join(config_json.get('phase_quality', None), 'phase-quality.nii.gz')
@@ -692,6 +886,16 @@ if __name__ == "__main__":
             quality_metrics=False
         )
         if labels_file: qsm_metrics_error = { labels.get(roi_id, f"ROI {roi_id}"): metrics for roi_id, metrics in qsm_metrics_error.items() }
+        qsm_groundtruth_masked = qsm_groundtruth_np * mask_np
+        qsm_groundtruth_masked_file = os.path.join(output_dir, "qsm_groundtruth_masked.nii.gz")
+        nib.save(
+            img=nib.Nifti1Image(
+                dataobj=qsm_groundtruth_masked,
+                affine=qsm_groundtruth_nii.affine,
+                header=qsm_groundtruth_nii.header
+            ),
+            filename=qsm_groundtruth_masked_file
+        )
     print("[INFO] Calculating QSM metrics...")
     qsm_metrics = eval.all_metrics(
         pred_data=qsm_estimate_np,
@@ -800,13 +1004,15 @@ if __name__ == "__main__":
     print("[INFO] Generating index.html...")
     html_body = ""
 
-    qsm_niivue_html, qsm_niivue_id = generate_niivue_html(qsm_estimate_file)
-    html_body += f"<h2>QSM Estimate Visualization</h2>{qsm_niivue_html}"
+    #qsm_niivue_html, qsm_niivue_id = generate_niivue_html(qsm_estimate_file)
+    #html_body += f"<h2>QSM Estimate Visualization</h2>{qsm_niivue_html}"
     if qsm_groundtruth_file is not None:
-        qsm_groundtruth_niivue_html, qsm_groundtruth_niivue_id = generate_niivue_html(qsm_groundtruth_file)
-        html_body += f"<h2>QSM Ground Truth</h2>{qsm_groundtruth_niivue_html}"
-        qsm_error_niivue_html, qsm_error_niivue_id = generate_niivue_html(qsm_error_file, colormap="jet", cal_range=(0, 0.2), slider_range=(0, 3))
-        html_body += f"<h2>QSM Error Visualization</h2>{qsm_error_niivue_html}"
+        qsm_niivue_html, qsm_niivue_id = generate_niivue_overlay_html(qsm_estimate_file, qsm_groundtruth_masked_file, cal_range1=(-0.1, 0.1), cal_range2=(-0.1, 0.1), slider_range1=(-1, +1), slider_range2=(-1, +1))
+        html_body += f"<h2>QSM Overlay Visualization</h2>{qsm_niivue_html}"
+        #qsm_groundtruth_niivue_html, qsm_groundtruth_niivue_id = generate_niivue_html(qsm_groundtruth_file)
+        #html_body += f"<h2>QSM Ground Truth</h2>{qsm_groundtruth_niivue_html}"
+        #qsm_error_niivue_html, qsm_error_niivue_id = generate_niivue_html(qsm_error_file, colormap="jet", cal_range=(0, 0.2), slider_range=(0, 3))
+        #html_body += f"<h2>QSM Error Visualization</h2>{qsm_error_niivue_html}"
     if phase_quality_file:
         phase_quality_niivue_html, phase_quality_niivue_id = generate_niivue_html(phase_quality_file, cal_range=(0, 1), slider_range=(0, 1))
         html_body += f"<h2>Phase Quality Visualization</h2>{phase_quality_niivue_html}"
@@ -821,8 +1027,8 @@ if __name__ == "__main__":
     if fieldmap_gt_file:
         fieldmap_niivue_html, fieldmap_niivue_id = generate_niivue_html(fieldmap_gt_file, cal_range=(-10, +10), slider_range=(-20, +20))
         html_body += f"<h2>Fieldmap (forward from QSM) Visualization</h2>{fieldmap_niivue_html}"
-        fieldmap_tissue_estimate_html, fieldmap_tissue_estimate_niivue_id = generate_niivue_html(fieldmap_estimate_file, cal_range=(-10, +10), slider_range=(-20, +20))
-        html_body += f"<h2>Fieldmap (ROMEO + V-SHARP) Visualization</h2>{fieldmap_tissue_estimate_html}"
+        fieldmap_estimate_html, fieldmap_estimate_niivue_id = generate_niivue_html(fieldmap_estimate_file, cal_range=(-10, +10), slider_range=(-20, +20))
+        html_body += f"<h2>Fieldmap (ROMEO + V-SHARP) Visualization</h2>{fieldmap_estimate_html}"
         fieldmap_error_niivue_html, fieldmap_error_niivue_id = generate_niivue_html(fieldmap_error_file, colormap="jet", cal_range=(0, 10), slider_range=(0, 20))
         html_body += f"<h2>Fieldmap Error Visualization</h2>{fieldmap_error_niivue_html}"
 
@@ -845,11 +1051,19 @@ if __name__ == "__main__":
 
 
     sync_code = ""
+
+    qsm_sync_ids = []
     if qsm_groundtruth_file is not None:
-        sync_code += sync_niivue(qsm_niivue_id, qsm_groundtruth_niivue_id)
-        sync_code += sync_niivue(qsm_groundtruth_niivue_id, qsm_error_niivue_id)
+        qsm_sync_ids = [qsm_niivue_id]
+    if magnitude_file:
+        qsm_sync_ids.append(snr_niivue_id)
+    if phase_quality_file:
+        qsm_sync_ids.append(phase_quality_niivue_id)
+    if qsm_sync_ids:
+        sync_code += generate_sync_code(qsm_sync_ids)    
+
     if fieldmap_gt_file:
-        sync_code += sync_niivue(fieldmap_niivue_id, fieldmap_tissue_estimate_niivue_id)
+        sync_code += generate_sync_code([fieldmap_niivue_id, fieldmap_estimate_niivue_id, fieldmap_error_niivue_id])
 
     full_html = generate_html_content(html_body, sync_code)
     with open(os.path.join(output_dir, "index.html"), "w") as html_file:
