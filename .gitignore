@@ -136,6 +136,6 @@ html
 metrics.csv
 metrics.json
 metrics.md
-*.nii
+*.nii*
 product.json
 *.sif
