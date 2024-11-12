@@ -777,8 +777,8 @@ if __name__ == "__main__":
     
     if B0 is None and "B0" in config_json:
         B0 = config_json["B0"]
-    else:
-        raise RuntimeError("'B0' is needed in config.json or 'MagneticFieldStrength' in qsm_estimate metadata!")
+        if B0 is None:
+            raise RuntimeError("'B0' is needed in config.json or 'MagneticFieldStrength' in qsm_estimate metadata!")
 
     # Prepare output directory
     output_dir = "outputs"
