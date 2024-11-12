@@ -1033,27 +1033,27 @@ if __name__ == "__main__":
         fieldmap_error_niivue_html, fieldmap_error_niivue_id = generate_niivue_html(fieldmap_error_file, colormap="jet", cal_range=(0, 10), slider_range=(0, 20))
         html_body += f"<h2>Fieldmap Error Visualization</h2>{fieldmap_error_niivue_html}"
 
-    fig_html = plot_roi_statistics_boxplot(qsm_estimate_np, segmentation_np, labels, title='QSM Values across ROIs', reference_values_json='literature-qsm-values.json').to_html()
-    if fig_html is not None:
-        html_body += f"<h2>QSM Values across ROIs</h2>{fig_html}"
+    fig = plot_roi_statistics_boxplot(qsm_estimate_np, segmentation_np, labels, title='QSM Values across ROIs', reference_values_json='literature-qsm-values.json')
+    if fig is not None:
+        html_body += f"<h2>QSM Values across ROIs</h2>{fig.to_html()}"
 
     if fieldmap_gt_file:
         #html_body += f"<h2>Fieldmap Values across ROIs</h2>{plot_roi_statistics_boxplot(fieldmap_estimate_np, segmentation_np, labels, title='Fieldmap Values across ROIs').to_html()}"
-        fig_html = plot_roi_statistics_boxplot(abs(fieldmap_estimate_np - fieldmap_gt_np), segmentation_np, labels, title='Fieldmap Errors across ROIs').to_html()
-        if fig_html is not None:
-            html_body += f"<h2>Fieldmap Errors across ROIs</h2>{fig_html}"
+        fig = plot_roi_statistics_boxplot(abs(fieldmap_estimate_np - fieldmap_gt_np), segmentation_np, labels, title='Fieldmap Errors across ROIs')
+        if fig is not None:
+            html_body += f"<h2>Fieldmap Errors across ROIs</h2>{fig.to_html()}"
     
-    fig_html = plot_metrics_by_region(qsm_metrics, title='QSM Metrics by Region').to_html()
-    if fig_html is not None:
-        html_body += f"<h2>QSM Metrics by Region</h2>{fig_html}"
+    fig = plot_metrics_by_region(qsm_metrics, title='QSM Metrics by Region')
+    if fig is not None:
+        html_body += f"<h2>QSM Metrics by Region</h2>{fig.to_html()}"
     #html_body += f"<h2>QSM Metrics</h2>{plot_regions_by_metrics(qsm_metrics, title='QSM Metrics by Region').to_html()}"
     #html_body += f"<h2>QSM Quality Measures by Region</h2>{plot_quality_measures_by_region(qsm_metrics, title='QSM Quality Measures by Region').to_html()}"
     #html_body += f"<h2>QSM Quality Measures by Measure</h2>{plot_regions_by_quality_measures(qsm_metrics, title='QSM Quality Measures by Measure').to_html()}"
 
     if fieldmap_gt_file:
-        fig_html = plot_metrics_by_region(fieldmap_metrics, title='Fieldmap Metrics by Region').to_html()
-        if fig_html is not None:
-            html_body += f"<h2>Fieldmap Metrics by Region</h2>{fig_html}"
+        fig = plot_metrics_by_region(fieldmap_metrics, title='Fieldmap Metrics by Region')
+        if fig is not None:
+            html_body += f"<h2>Fieldmap Metrics by Region</h2>{fig.to_html()}"
         #html_body += f"<h2>Fieldmap Metrics</h2>{plot_regions_by_metrics(fieldmap_metrics, title='Fieldmap Metrics by Region').to_html()}"
         #html_body += f"<h2>Fieldmap Quality Measures by Region</h2>{plot_quality_measures_by_region(fieldmap_metrics, title='Fieldmap Quality Measures by Region').to_html()}"
         #html_body += f"<h2>Fieldmap Quality Measures by Measure</h2>{plot_regions_by_quality_measures(fieldmap_metrics, title='Fieldmap Quality Measures by Measure').to_html()}"
