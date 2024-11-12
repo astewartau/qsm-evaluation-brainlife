@@ -837,6 +837,7 @@ if __name__ == "__main__":
 
     # Load QSM ground truth
     qsm_groundtruth_file = config_json.get('qsm_groundtruth', None)
+    qsm_groundtruth_np = None
     if qsm_groundtruth_file:
         print("[INFO] Loading QSM ground truth...")
         qsm_groundtruth_nii = nib.load(qsm_groundtruth_file)
