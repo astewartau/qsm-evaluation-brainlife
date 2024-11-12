@@ -771,7 +771,7 @@ if __name__ == "__main__":
     B0 = None
     if "_inputs" in config_json:
         for entry in config_json["_inputs"]:
-            if entry["id"] == "qsm":
+            if entry["id"] == "qsm_estimate":
                 B0 = entry["meta"]["MagneticFieldStrength"]
                 break
     
