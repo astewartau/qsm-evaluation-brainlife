@@ -3,7 +3,7 @@
 """
 eval.py
 
-Authors: Boyi Du <boyi.du@uq.net.au>, Ashley Stewart <ashley.stewart@uq.edu.au>
+Authors: Boyi Du <boyi.du@uq.net.au>, Ashley Stewart
 
 - This module provides functions to compute various metrics given 3D predictions and reference data.
 - When reference data are unavailable, a subset of metrics can still be computed.
