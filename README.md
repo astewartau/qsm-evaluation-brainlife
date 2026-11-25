@@ -2,6 +2,40 @@
 [![Run on Brainlife.io](https://img.shields.io/badge/Brainlife-bl.app.444-blue.svg)](https://doi.org/10.25663/bl.app.444)
 
 # app-template-python
+
+<!-- brainlife-app:begin (generated from the App manifest; edit the manifest, not this block) -->
+
+> **Benchmarks one or more QSM susceptibility estimates against a ground-truth map, computing RMSE, NRMSE, HFEN, XSIM, MAD, CC, NMI and GXE overall and per region, and reports them as an HTML figure and table.**
+
+Computes error metrics between each QSM estimate and a ground-truth susceptibility map (RMSE, NRMSE, HFEN, XSIM, MAD, CC, NMI, GXE), overall and per ROI of a segmentation, and reports per-ROI value distributions and SNR from the GRE magnitude when available. The field strength comes from the estimate's MagneticFieldStrength metadata or B0. Use it to benchmark QSM pipelines, for example on simulated data with known ground truth. The README is an unfilled template; behaviour is taken from main.py and eval.py.
+
+| | |
+|---|---|
+| 📥 **Inputs** | `neuro/qsm` · `neuro/qsm` (optional) · `neuro/parcellation/volume` (optional) · `neuro/mask` (optional) · `neuro/fmap` (optional) · `raw` (optional) |
+| 📤 **Outputs** | `report/html` |
+| 🐳 **Container** | `python:3.9-bookworm` |
+| ⚙️ **Resources** | 16 GB memory · 1 h walltime |
+| 🔗 **Run it** | [doi.org/10.25663/brainlife.app.822](https://doi.org/10.25663/brainlife.app.822) |
+
+#### 📥 Inputs
+
+| Input | Datatype | Required | Description |
+|---|---|---|---|
+| `qsm_estimate` | `neuro/qsm` | yes | Estimated susceptibility map produced by a QSM pipeline. |
+| `qsm_groundtruth` | `neuro/qsm` (ground-truth) | no | Ground truth susceptibility map (e.g. produced by COSMOS or the QSM Data Generator App). |
+| `qsm_segmentation` | `neuro/parcellation/volume` | no | Optional volumetric segmentation (parc + label.json) defining ROIs for per-region metrics. |
+| `qsm_mask` | `neuro/mask` | no | Optional mask restricting the evaluation region. |
+| `fieldmap_tissue` | `neuro/fmap` (single, tissue) | no | Optional tissue field map with GRE magnitude; the magnitude is used to compute per-ROI SNR. |
+| `phase_quality` | `raw` (phase-quality) | no | Optional phase-quality map (phase-quality.nii.gz) used in the evaluation. |
+
+#### 📤 Outputs
+
+| Output | Datatype | Description |
+|---|---|---|
+| `html` | `report/html` | Report of QSM Evaluation |
+
+<!-- brainlife-app:end -->
+
 This is a template showing how to develop a python-based brainlife.io/app
 
 # app-example-documentation
